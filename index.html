@@ -1,0 +1,196 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Spain Swimming Rankings</title>
+<style>
+body{font-family:Arial,Helvetica,sans-serif;margin:20px;background:#f5f7fb}
+h1{margin-bottom:10px}
+.controls{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
+select,input{padding:6px 10px;border-radius:6px;border:1px solid #ccc}
+table{border-collapse:collapse;width:100%;background:white}
+th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}
+th{background:#f0f2f7}
+.rank{font-weight:bold}
+</style>
+</head>
+
+<body>
+
+<h1>Spain Swimming Rankings (Boys 2014)</h1>
+
+<div class="controls">
+<select id="strokeFilter">
+<option value="">All strokes</option>
+</select>
+
+<select id="eventFilter">
+<option value="">All events</option>
+</select>
+
+<input id="searchBox" placeholder="Search swimmer or club"/>
+</div>
+
+<table id="resultsTable">
+<thead>
+<tr>
+<th>Rank</th>
+<th>Event</th>
+<th>Swimmer</th>
+<th>Club</th>
+<th>Time</th>
+<th>Meet</th>
+<th>Date</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+
+<script>
+
+function timeToSeconds(t){
+if(!t)return Infinity
+let p=t.split(":")
+if(p.length==2)return Number(p[0])*60+Number(p[1])
+return Number(t)
+}
+
+let rows=[]
+let standings=[]
+
+function computeStandings(){
+
+let stroke=document.getElementById("strokeFilter").value
+let event=document.getElementById("eventFilter").value
+let search=document.getElementById("searchBox").value.toLowerCase()
+
+let map={}
+
+rows.filter(r=>(!stroke||r.stroke==stroke)&&(!event||r.event==event))
+.forEach(r=>{
+
+let key=r.event+"_"+r.canonical_swimmer
+
+if(!map[key]||timeToSeconds(r.time)<timeToSeconds(map[key].time)){
+map[key]=r
+}
+
+})
+
+let byEvent={}
+
+Object.values(map).forEach(r=>{
+if(!byEvent[r.event])byEvent[r.event]=[]
+byEvent[r.event].push(r)
+})
+
+standings=[]
+
+Object.entries(byEvent).forEach(([event,list])=>{
+
+list.sort((a,b)=>timeToSeconds(a.time)-timeToSeconds(b.time))
+
+list.forEach((r,i)=>{
+
+if(search && !(r.canonical_swimmer.toLowerCase().includes(search) || r.club.toLowerCase().includes(search))) return
+
+standings.push({
+rank:i+1,
+event:r.event,
+swimmer:r.canonical_swimmer,
+club:r.club,
+time:r.time,
+meet:r.meet,
+date:r.date
+})
+
+})
+
+})
+
+render()
+
+}
+
+function render(){
+
+let tbody=document.querySelector("#resultsTable tbody")
+tbody.innerHTML=""
+
+standings.forEach(r=>{
+
+let tr=document.createElement("tr")
+
+tr.innerHTML=`
+<td class="rank">${r.rank}</td>
+<td>${r.event}</td>
+<td>${r.swimmer}</td>
+<td>${r.club}</td>
+<td>${r.time}</td>
+<td>${r.meet}</td>
+<td>${r.date}</td>
+`
+
+tbody.appendChild(tr)
+
+})
+
+}
+
+function populateFilters(){
+
+let strokes=[...new Set(rows.map(r=>r.stroke))]
+let events=[...new Set(rows.map(r=>r.event))]
+
+let strokeSel=document.getElementById("strokeFilter")
+let eventSel=document.getElementById("eventFilter")
+
+strokes.forEach(s=>{
+let o=document.createElement("option")
+o.value=s
+o.textContent=s
+strokeSel.appendChild(o)
+})
+
+events.forEach(e=>{
+let o=document.createElement("option")
+o.value=e
+o.textContent=e
+eventSel.appendChild(o)
+})
+
+strokeSel.onchange=computeStandings
+eventSel.onchange=computeStandings
+document.getElementById("searchBox").oninput=computeStandings
+
+}
+
+fetch("data/spain_boys_2014_results_master.csv")
+.then(r=>r.text())
+.then(text=>{
+
+let lines=text.trim().split("\n")
+let headers=lines[0].split(",")
+
+rows=lines.slice(1).map(l=>{
+
+let parts=l.split(",")
+let obj={}
+
+headers.forEach((h,i)=>obj[h]=parts[i])
+
+return obj
+
+})
+
+populateFilters()
+computeStandings()
+
+})
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,96 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Search</title><script src="data/app.js"></script></head><body><div class="wrap"><div class="nav"><a href="index.html">Home</a><a href="search.html" class="active">Search</a><a href="clubs.html">Clubs</a></div><h1>Search results</h1><div class="grid sidebar"><div class="card panel"><div class="stack"><input id="searchBox" placeholder="Search swimmer or club"/><select id="seasonFilter"><option value="">All seasons</option></select><select id="provinceFilter"><option value="">All provinces</option></select><select id="venueFilter"><option value="">All venues</option></select><select id="clubFilter"><option value="">All clubs</option></select><select id="strokeFilter"><option value="">All strokes</option></select><select id="eventFilter"><option value="">All events</option></select><button id="clearBtn">Clear filters</button></div></div><div class="stack"><div class="card panel"><h2 id="title">Results</h2><div class="tableWrap"><table><thead><tr><th>Place</th><th>Date</th><th>Event</th><th>Swimmer</th><th>Club</th><th>Meet</th><th>Time</th></tr></thead><tbody id="results"></tbody></table></div></div></div></div></div><script>
+injectStyles();
+let rows=[];
+function fillSelect(id,values,current){
+  const el=document.getElementById(id),label=el.options[0]?.textContent||'All';
+  el.innerHTML='';
+  const first=document.createElement('option');
+  first.value=''; first.textContent=label; el.appendChild(first);
+  values.forEach(v=>{
+    const o=document.createElement('option');
+    o.value=v; o.textContent=v;
+    if(v===current) o.selected=true;
+    el.appendChild(o);
+  });
+}
+function computeEventPlaces(list){
+  const grouped = new Map();
+  list.forEach(r=>{
+    const key=[r.event,r.meet,r.venue,r.dateIso||r.date].join('|');
+    if(!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(r);
+  });
+  const placeMap = new Map();
+  grouped.forEach(arr=>{
+    arr.sort((a,b)=>(a.rank||9999)-(b.rank||9999)||a.timeSeconds-b.timeSeconds||a.canonical_swimmer.localeCompare(b.canonical_swimmer,'es'));
+    let prevMetric=null, place=0;
+    arr.forEach((r,idx)=>{
+      const metric=(r.rank&&r.rank>0)?`rank:${r.rank}`:`time:${r.timeSeconds}`;
+      if(metric!==prevMetric) place=idx+1;
+      prevMetric=metric;
+      placeMap.set(r, place);
+    });
+  });
+  return placeMap;
+}
+function ordinal(n){
+  if(!n) return '';
+  const s=['th','st','nd','rd'], v=n%100;
+  return n + (s[(v-20)%10] || s[v] || s[0]);
+}
+function run(){
+  const q=document.getElementById('searchBox').value.trim(),
+    season=document.getElementById('seasonFilter').value,
+    province=document.getElementById('provinceFilter').value,
+    venue=document.getElementById('venueFilter').value,
+    club=document.getElementById('clubFilter').value,
+    stroke=document.getElementById('strokeFilter').value,
+    event=document.getElementById('eventFilter').value;
+
+  const out=rows
+    .filter(r=>!season||r.season===season)
+    .filter(r=>!province||r.province===province)
+    .filter(r=>!venue||r.venue===venue)
+    .filter(r=>!club||r.club===club)
+    .filter(r=>!stroke||r.stroke===stroke)
+    .filter(r=>!event||r.event===event)
+    .filter(r=>!q||[r.canonical_swimmer,r.swimmer_raw,r.club,r.meet,r.event,r.venue,r.province].some(v=>normalize(v).includes(normalize(q))));
+
+  const places = computeEventPlaces(out);
+
+  out.sort((a,b)=>{
+    const dateCmp = String(b.dateIso||b.date).localeCompare(String(a.dateIso||a.date));
+    if(dateCmp) return dateCmp;
+    const meetCmp = a.meet.localeCompare(b.meet,'es');
+    if(meetCmp) return meetCmp;
+    const eventCmp = ((a.distance||0)-(b.distance||0)) || a.event.localeCompare(b.event,'es');
+    if(eventCmp) return eventCmp;
+    const placeCmp = (places.get(a)||9999) - (places.get(b)||9999);
+    if(placeCmp) return placeCmp;
+    return a.timeSeconds - b.timeSeconds;
+  });
+
+  document.getElementById('title').textContent='Results ('+out.length+')';
+  document.getElementById('results').innerHTML=
+    out.map(r=>`<tr><td data-label="Place">${ordinal(places.get(r)||r.rank||'')}</td><td data-label="Date">${escapeHtml(r.date)}</td><td data-label="Event">${escapeHtml(r.event)}</td><td data-label="Swimmer"><a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">${escapeHtml(displaySwimmerName(r.canonical_swimmer))}</a></td><td data-label="Club">${escapeHtml(r.club)}</td><td data-label="Meet">${escapeHtml(r.meet)}<div class="small">${escapeHtml(r.venue)}</div></td><td data-label="Time">${escapeHtml(r.time)}</td></tr>`).join('') || '<tr><td class="empty">No rows found.</td></tr>';
+}
+loadRows().then(r=>{
+  rows=r;
+  fillSelect('seasonFilter',uniqueSorted(rows.map(r=>r.season)),'');
+  fillSelect('provinceFilter',uniqueSorted(rows.map(r=>r.province)),'');
+  fillSelect('venueFilter',uniqueSorted(rows.map(r=>r.venue)),'');
+  fillSelect('clubFilter',uniqueSorted(rows.map(r=>r.club)),'');
+  fillSelect('strokeFilter',uniqueSorted(rows.map(r=>r.stroke)),'');
+  fillSelect('eventFilter',uniqueSorted(rows.map(r=>r.event)).sort((a,b)=>eventSort(a,b,rows)),'');
+  ['searchBox','seasonFilter','provinceFilter','venueFilter','clubFilter','strokeFilter','eventFilter'].forEach(id=>document.getElementById(id).addEventListener(id==='searchBox'?'input':'change',run));
+  document.getElementById('clearBtn').addEventListener('click',()=>{
+    document.getElementById('searchBox').value='';
+    ['seasonFilter','provinceFilter','venueFilter','clubFilter','strokeFilter','eventFilter'].forEach(id=>document.getElementById(id).value='');
+    run();
+  });
+  run();
+}).catch(err=>{
+  console.error(err);
+  document.getElementById('results').innerHTML='<tr><td class="empty">Could not load the CSV file.</td></tr>';
+});
+</script></body></html>

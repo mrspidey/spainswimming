@@ -1,138 +1,332 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Search</title><script src="data/app.js"></script></head><body><div class="wrap"><div class="nav"><a href="index.html">Home</a><a href="search.html" class="active">Search</a><a href="clubs.html">Clubs</a></div><h1>Search results</h1><div class="grid sidebar"><div class="card panel"><div class="stack"><div class="nav" style="margin-bottom:0"><a href="#" id="resultsModeBtn" class="active">All results</a><a href="#" id="rankingsModeBtn">Rankings</a></div><input id="searchBox" placeholder="Search swimmer or club"/><select id="seasonFilter"><option value="">All seasons</option></select><select id="provinceFilter"><option value="">All provinces</option></select><select id="venueFilter"><option value="">All venues</option></select><select id="clubFilter"><option value="">All clubs</option></select><select id="strokeFilter"><option value="">All strokes</option></select><select id="eventFilter"><option value="">All events</option></select><button id="clearBtn">Clear filters</button></div></div><div class="stack"><div class="card panel"><h2 id="title">Results</h2><div class="tableWrap"><table><thead id="tableHead"></thead><tbody id="results"></tbody></table></div></div></div></div></div><script>
-injectStyles();
-let rows=[], mode='results';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Search</title>
+  <script src="data/app.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="nav">
+      <a href="index.html">Home</a>
+      <a href="search.html" class="active">Search</a>
+      <a href="clubs.html">Clubs</a>
+    </div>
 
-function fillSelect(id,values,current){
-  const el=document.getElementById(id),label=el.options[0]?.textContent||'All';
-  el.innerHTML='';
-  const first=document.createElement('option');
-  first.value=''; first.textContent=label; el.appendChild(first);
-  values.forEach(v=>{
-    const o=document.createElement('option');
-    o.value=v; o.textContent=v;
-    if(v===current) o.selected=true;
-    el.appendChild(o);
-  });
-}
-function ordinal(n){
-  if(!n) return '';
-  const s=['th','st','nd','rd'], v=n%100;
-  return n + (s[(v-20)%10] || s[v] || s[0]);
-}
-function filteredRows(){
-  const q=document.getElementById('searchBox').value.trim(),
-    season=document.getElementById('seasonFilter').value,
-    province=document.getElementById('provinceFilter').value,
-    venue=document.getElementById('venueFilter').value,
-    club=document.getElementById('clubFilter').value,
-    stroke=document.getElementById('strokeFilter').value,
-    event=document.getElementById('eventFilter').value;
-  return rows
-    .filter(r=>!season||r.season===season)
-    .filter(r=>!province||r.province===province)
-    .filter(r=>!venue||r.venue===venue)
-    .filter(r=>!club||r.club===club)
-    .filter(r=>!stroke||r.stroke===stroke)
-    .filter(r=>!event||r.event===event)
-    .filter(r=>!q||[r.canonical_swimmer,r.swimmer_raw,r.club,r.meet,r.event,r.venue,r.province].some(v=>normalize(v).includes(normalize(q))));
-}
-function computeRacePlaces(list){
-  const grouped = new Map();
-  list.forEach(r=>{
-    const key=[r.event,r.meet,r.venue,r.dateIso||r.date].join('|');
-    if(!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key).push(r);
-  });
-  const placeMap = new Map();
-  grouped.forEach(arr=>{
-    arr.sort((a,b)=>(a.rank||9999)-(b.rank||9999)||a.timeSeconds-b.timeSeconds||a.canonical_swimmer.localeCompare(b.canonical_swimmer,'es'));
-    let prevMetric=null, place=0;
-    arr.forEach((r,idx)=>{
-      const metric=(r.rank&&r.rank>0)?`rank:${r.rank}`:`time:${r.timeSeconds}`;
-      if(metric!==prevMetric) place=idx+1;
-      prevMetric=metric;
-      placeMap.set(r, place);
-    });
-  });
-  return placeMap;
-}
-function computeRankings(list){
-  const grouped = new Map();
-  list.forEach(r=>{
-    const key=r.event;
-    if(!grouped.has(key)) grouped.set(key, new Map());
-    const bySwimmer=grouped.get(key);
-    const existing=bySwimmer.get(r.canonical_swimmer);
-    if(!existing || r.timeSeconds < existing.timeSeconds) bySwimmer.set(r.canonical_swimmer, r);
-  });
-  const rankedRows = [];
-  grouped.forEach((bySwimmer,event)=>{
-    const arr=[...bySwimmer.values()].sort((a,b)=>a.timeSeconds-b.timeSeconds||a.canonical_swimmer.localeCompare(b.canonical_swimmer,'es'));
-    let prevTime=null, place=0;
-    arr.forEach((r,idx)=>{
-      if(r.timeSeconds !== prevTime) place = idx + 1;
-      prevTime = r.timeSeconds;
-      rankedRows.push({...r, rankingPlace: place});
-    });
-  });
-  rankedRows.sort((a,b)=>{
-    const eventCmp=((a.distance||0)-(b.distance||0)) || a.event.localeCompare(b.event,'es');
-    if(eventCmp) return eventCmp;
-    return (a.rankingPlace||9999) - (b.rankingPlace||9999);
-  });
-  return rankedRows;
-}
-function render(){
-  document.getElementById('resultsModeBtn').classList.toggle('active', mode==='results');
-  document.getElementById('rankingsModeBtn').classList.toggle('active', mode==='rankings');
+    <h1>Search results</h1>
 
-  const out = filteredRows();
-  const head = document.getElementById('tableHead');
-  const body = document.getElementById('results');
-  const title = document.getElementById('title');
+    <div class="grid sidebar">
+      <div class="card panel">
+        <div class="stack">
+          <div class="nav" style="margin-bottom:0">
+            <a href="#" id="resultsModeBtn" class="active">All results</a>
+            <a href="#" id="rankingsModeBtn">Rankings</a>
+          </div>
 
-  if(mode === 'results'){
-    const places = computeRacePlaces(out);
-    out.sort((a,b)=>{
-      const dateCmp = String(b.dateIso||b.date).localeCompare(String(a.dateIso||a.date));
-      if(dateCmp) return dateCmp;
-      const meetCmp = a.meet.localeCompare(b.meet,'es');
-      if(meetCmp) return meetCmp;
-      const eventCmp = ((a.distance||0)-(b.distance||0)) || a.event.localeCompare(b.event,'es');
-      if(eventCmp) return eventCmp;
-      const placeCmp = (places.get(a)||9999) - (places.get(b)||9999);
-      if(placeCmp) return placeCmp;
-      return a.timeSeconds - b.timeSeconds;
+          <input id="searchBox" placeholder="Search swimmer or club" />
+          <select id="seasonFilter"><option value="">All seasons</option></select>
+          <select id="provinceFilter"><option value="">All provinces</option></select>
+          <select id="venueFilter"><option value="">All venues</option></select>
+          <select id="clubFilter"><option value="">All clubs</option></select>
+          <select id="strokeFilter"><option value="">All strokes</option></select>
+          <select id="eventFilter"><option value="">All events</option></select>
+          <button id="clearBtn">Clear filters</button>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="card panel">
+          <h2 id="title">Results</h2>
+          <div class="tableWrap">
+            <table>
+              <thead id="tableHead"></thead>
+              <tbody id="results"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    injectStyles();
+
+    let rows = [];
+    let mode = "results";
+
+    function fillSelect(id, values, current, labelOverride) {
+      const el = document.getElementById(id);
+      const label = labelOverride || el.options[0]?.textContent || "All";
+      el.innerHTML = "";
+
+      const first = document.createElement("option");
+      first.value = "";
+      first.textContent = label;
+      el.appendChild(first);
+
+      values.forEach(v => {
+        const o = document.createElement("option");
+        o.value = v.value ?? v;
+        o.textContent = v.label ?? v;
+        if ((v.value ?? v) === current) o.selected = true;
+        el.appendChild(o);
+      });
+    }
+
+    function ordinal(n){
+      if(!n) return "";
+      const s = ["th","st","nd","rd"];
+      const v = n % 100;
+      return n + (s[(v - 20) % 10] || s[v] || s[0]);
+    }
+
+    function getFilteredRows(){
+      const q = document.getElementById("searchBox").value.trim();
+      const season = document.getElementById("seasonFilter").value;
+      const province = document.getElementById("provinceFilter").value;
+      const venue = document.getElementById("venueFilter").value;
+      const club = document.getElementById("clubFilter").value;
+      const stroke = document.getElementById("strokeFilter").value;
+      const event = document.getElementById("eventFilter").value;
+
+      return rows
+        .filter(r => !season || r.season === season)
+        .filter(r => !province || r.province === province)
+        .filter(r => !venue || r.venue === venue)
+        .filter(r => !club || r.club === club)
+        .filter(r => !stroke || strokeEnglish(r.stroke || r.event) === stroke)
+        .filter(r => !event || r.event === event)
+        .filter(r => !q || [
+          displaySwimmerName(r.canonical_swimmer),
+          r.canonical_swimmer,
+          r.swimmer_raw,
+          r.club,
+          r.meet,
+          r.event,
+          r.venue,
+          r.province
+        ].some(v => normalize(v).includes(normalize(q))));
+    }
+
+    function updateEventFilter(){
+      const stroke = document.getElementById("strokeFilter").value;
+      const current = document.getElementById("eventFilter").value;
+
+      const scoped = stroke
+        ? rows.filter(r => strokeEnglish(r.stroke || r.event) === stroke)
+        : rows;
+
+      const events = uniqueSorted(scoped.map(r => r.event))
+        .sort((a, b) => eventSort(a, b, rows))
+        .map(ev => ({ value: ev, label: eventDisplay(ev) }));
+
+      fillSelect("eventFilter", events, current, "All events");
+
+      const stillExists = events.some(e => e.value === current);
+      if (current && !stillExists) {
+        document.getElementById("eventFilter").value = "";
+      }
+    }
+
+    function computeRacePlaces(list){
+      const grouped = new Map();
+
+      list.forEach(r => {
+        const key = [r.event, r.meet, r.venue, r.dateIso || r.date].join("|");
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key).push(r);
+      });
+
+      const placeMap = new Map();
+
+      grouped.forEach(arr => {
+        arr.sort((a, b) =>
+          (a.rank || 9999) - (b.rank || 9999) ||
+          a.timeSeconds - b.timeSeconds ||
+          a.canonical_swimmer.localeCompare(b.canonical_swimmer, "es")
+        );
+
+        let prevMetric = null;
+        let place = 0;
+
+        arr.forEach((r, idx) => {
+          const metric = (r.rank && r.rank > 0) ? `rank:${r.rank}` : `time:${r.timeSeconds}`;
+          if (metric !== prevMetric) place = idx + 1;
+          prevMetric = metric;
+          placeMap.set(r, place);
+        });
+      });
+
+      return placeMap;
+    }
+
+    function computeRankings(list){
+      const grouped = new Map();
+
+      list.forEach(r => {
+        const key = r.event;
+        if (!grouped.has(key)) grouped.set(key, new Map());
+
+        const bySwimmer = grouped.get(key);
+        const existing = bySwimmer.get(r.canonical_swimmer);
+
+        if (!existing || r.timeSeconds < existing.timeSeconds) {
+          bySwimmer.set(r.canonical_swimmer, r);
+        }
+      });
+
+      const rankedRows = [];
+
+      grouped.forEach((bySwimmer, event) => {
+        const arr = [...bySwimmer.values()].sort((a, b) =>
+          a.timeSeconds - b.timeSeconds ||
+          a.canonical_swimmer.localeCompare(b.canonical_swimmer, "es")
+        );
+
+        let prevTime = null;
+        let place = 0;
+
+        arr.forEach((r, idx) => {
+          if (r.timeSeconds !== prevTime) place = idx + 1;
+          prevTime = r.timeSeconds;
+          rankedRows.push({ ...r, rankingPlace: place });
+        });
+      });
+
+      rankedRows.sort((a, b) =>
+        ((a.distance || 0) - (b.distance || 0)) ||
+        a.event.localeCompare(b.event, "es") ||
+        ((a.rankingPlace || 9999) - (b.rankingPlace || 9999))
+      );
+
+      return rankedRows;
+    }
+
+    function render(){
+      document.getElementById("resultsModeBtn").classList.toggle("active", mode === "results");
+      document.getElementById("rankingsModeBtn").classList.toggle("active", mode === "rankings");
+
+      const out = getFilteredRows();
+      const head = document.getElementById("tableHead");
+      const body = document.getElementById("results");
+      const title = document.getElementById("title");
+
+      if (mode === "results") {
+        const places = computeRacePlaces(out);
+
+        out.sort((a, b) =>
+          String(b.dateIso || b.date).localeCompare(String(a.dateIso || a.date)) ||
+          a.meet.localeCompare(b.meet, "es") ||
+          (((a.distance || 0) - (b.distance || 0)) || a.event.localeCompare(b.event, "es")) ||
+          ((places.get(a) || 9999) - (places.get(b) || 9999)) ||
+          (a.timeSeconds - b.timeSeconds)
+        );
+
+        title.textContent = `All results (${out.length})`;
+        head.innerHTML = `<tr><th>Place</th><th>Date</th><th>Event</th><th>Swimmer</th><th>Club</th><th>Meet</th><th>Time</th></tr>`;
+
+        body.innerHTML = out.map(r => `
+          <tr>
+            <td data-label="Place">${ordinal(places.get(r) || r.rank || "")}</td>
+            <td data-label="Date">${escapeHtml(r.date)}</td>
+            <td data-label="Event">${escapeHtml(eventDisplay(r.event))}</td>
+            <td data-label="Swimmer">
+              <a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">${escapeHtml(displaySwimmerName(r.canonical_swimmer))}</a>
+            </td>
+            <td data-label="Club">${escapeHtml(r.club)}</td>
+            <td data-label="Meet">${escapeHtml(r.meet)}<div class="small">${escapeHtml(r.venue)}</div></td>
+            <td data-label="Time">${escapeHtml(r.time)}</td>
+          </tr>
+        `).join("") || `<tr><td class="empty">No rows found.</td></tr>`;
+      } else {
+        const ranked = computeRankings(out);
+
+        title.textContent = `Rankings (${ranked.length})`;
+        head.innerHTML = `<tr><th>Rank</th><th>Event</th><th>Swimmer</th><th>Club</th><th>Best time</th><th>Meet</th><th>Date</th></tr>`;
+
+        body.innerHTML = ranked.map(r => `
+          <tr>
+            <td data-label="Rank">${ordinal(r.rankingPlace)}</td>
+            <td data-label="Event">${escapeHtml(eventDisplay(r.event))}</td>
+            <td data-label="Swimmer">
+              <a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">${escapeHtml(displaySwimmerName(r.canonical_swimmer))}</a>
+            </td>
+            <td data-label="Club">${escapeHtml(r.club)}</td>
+            <td data-label="Best time">${escapeHtml(r.time)}</td>
+            <td data-label="Meet">${escapeHtml(r.meet)}<div class="small">${escapeHtml(r.venue)}</div></td>
+            <td data-label="Date">${escapeHtml(r.date)}</td>
+          </tr>
+        `).join("") || `<tr><td class="empty">No rows found.</td></tr>`;
+      }
+    }
+
+    loadRows().then(r => {
+      rows = r;
+
+      mountAutocomplete("searchSuggestions", "searchBox", rows);
+
+      fillSelect("seasonFilter", uniqueSorted(rows.map(r => r.season)), "");
+      fillSelect("provinceFilter", uniqueSorted(rows.map(r => r.province)), "");
+      fillSelect("venueFilter", uniqueSorted(rows.map(r => r.venue)), "");
+      fillSelect("clubFilter", uniqueSorted(rows.map(r => r.club)), "");
+      fillSelect("strokeFilter", [
+        { value: "Backstroke", label: "Espalda / Backstroke" },
+        { value: "Breaststroke", label: "Braza / Breaststroke" },
+        { value: "Butterfly", label: "Mariposa / Butterfly" },
+        { value: "Freestyle", label: "Libre / Freestyle" },
+        { value: "Medley", label: "Estilos / Medley" }
+      ], "", "All strokes");
+
+      updateEventFilter();
+
+      ["searchBox","seasonFilter","provinceFilter","venueFilter","clubFilter","eventFilter"].forEach(id => {
+        document.getElementById(id).addEventListener(id === "searchBox" ? "input" : "change", render);
+      });
+
+      document.getElementById("strokeFilter").addEventListener("change", () => {
+        updateEventFilter();
+        render();
+      });
+
+      document.getElementById("clearBtn").addEventListener("click", () => {
+        document.getElementById("searchBox").value = "";
+        ["seasonFilter","provinceFilter","venueFilter","clubFilter","strokeFilter","eventFilter"].forEach(id => {
+          document.getElementById(id).value = "";
+        });
+        updateEventFilter();
+        render();
+      });
+
+      document.getElementById("resultsModeBtn").addEventListener("click", e => {
+        e.preventDefault();
+        mode = "results";
+        render();
+      });
+
+      document.getElementById("rankingsModeBtn").addEventListener("click", e => {
+        e.preventDefault();
+        mode = "rankings";
+        render();
+      });
+
+      render();
+    }).catch(err => {
+      console.error(err);
+      document.getElementById("results").innerHTML = `<tr><td class="empty">Could not load the CSV file.</td></tr>`;
     });
-    title.textContent='All results ('+out.length+')';
-    head.innerHTML='<tr><th>Place</th><th>Date</th><th>Event</th><th>Swimmer</th><th>Club</th><th>Meet</th><th>Time</th></tr>';
-    body.innerHTML=out.map(r=>`<tr><td data-label="Place">${ordinal(places.get(r)||r.rank||'')}</td><td data-label="Date">${escapeHtml(r.date)}</td><td data-label="Event">${escapeHtml(r.event)}</td><td data-label="Swimmer"><a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">${escapeHtml(displaySwimmerName(r.canonical_swimmer))}</a></td><td data-label="Club">${escapeHtml(r.club)}</td><td data-label="Meet">${escapeHtml(r.meet)}<div class="small">${escapeHtml(r.venue)}</div></td><td data-label="Time">${escapeHtml(r.time)}</td></tr>`).join('') || '<tr><td class="empty">No rows found.</td></tr>';
-  } else {
-    const ranked = computeRankings(out);
-    title.textContent='Rankings ('+ranked.length+')';
-    head.innerHTML='<tr><th>Rank</th><th>Event</th><th>Swimmer</th><th>Club</th><th>Best time</th><th>Meet</th><th>Date</th></tr>';
-    body.innerHTML=ranked.map(r=>`<tr><td data-label="Rank">${ordinal(r.rankingPlace)}</td><td data-label="Event">${escapeHtml(r.event)}</td><td data-label="Swimmer"><a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">${escapeHtml(displaySwimmerName(r.canonical_swimmer))}</a></td><td data-label="Club">${escapeHtml(r.club)}</td><td data-label="Best time">${escapeHtml(r.time)}</td><td data-label="Meet">${escapeHtml(r.meet)}<div class="small">${escapeHtml(r.venue)}</div></td><td data-label="Date">${escapeHtml(r.date)}</td></tr>`).join('') || '<tr><td class="empty">No rows found.</td></tr>';
-  }
-}
-loadRows().then(r=>{
-  rows=r;
-  fillSelect('seasonFilter',uniqueSorted(rows.map(r=>r.season)),'');
-  fillSelect('provinceFilter',uniqueSorted(rows.map(r=>r.province)),'');
-  fillSelect('venueFilter',uniqueSorted(rows.map(r=>r.venue)),'');
-  fillSelect('clubFilter',uniqueSorted(rows.map(r=>r.club)),'');
-  fillSelect('strokeFilter',uniqueSorted(rows.map(r=>r.stroke)),'');
-  fillSelect('eventFilter',uniqueSorted(rows.map(r=>r.event)).sort((a,b)=>eventSort(a,b,rows)),'');
-  ['searchBox','seasonFilter','provinceFilter','venueFilter','clubFilter','strokeFilter','eventFilter'].forEach(id=>document.getElementById(id).addEventListener(id==='searchBox'?'input':'change',render));
-  document.getElementById('clearBtn').addEventListener('click',()=>{
-    document.getElementById('searchBox').value='';
-    ['seasonFilter','provinceFilter','venueFilter','clubFilter','strokeFilter','eventFilter'].forEach(id=>document.getElementById(id).value='');
-    render();
-  });
-  document.getElementById('resultsModeBtn').addEventListener('click',e=>{e.preventDefault(); mode='results'; render();});
-  document.getElementById('rankingsModeBtn').addEventListener('click',e=>{e.preventDefault(); mode='rankings'; render();});
-  render();
-}).catch(err=>{
-  console.error(err);
-  document.getElementById('results').innerHTML='<tr><td class="empty">Could not load the CSV file.</td></tr>';
-});
-</script></body></html>
+  </script>
+</body>
+</html>'''
+(base / "search.html").write_text(search_html, encoding="utf-8")
+
+# zip
+zip_path = Path("/mnt/data/spainswimming_complete_rebuild.zip")
+with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+    for root, dirs, files in os.walk(base):
+        for f in files:
+            full = Path(root) / f
+            z.write(full, full.relative_to(base).as_posix())
+
+print(str(zip_path))
+print((base / "index.html").exists(), (base / "search.html").exists(), (base / "data" / "app.js").exists())

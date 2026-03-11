@@ -105,3 +105,43 @@ function groupMeets(rows){
   });
   return [...map.values()].map(m=>({...m,eventCount:uniqueSorted(m.rows.map(r=>r.event)).length,swimmerCount:uniqueSorted(m.rows.map(r=>r.canonical_swimmer)).length,complete:true})).sort((a,b)=>String(b.dateIso).localeCompare(String(a.dateIso))||a.meet.localeCompare(b.meet,'es'));
 }
+function strokeEnglish(strokeOrEvent){
+  const s = String(strokeOrEvent || '');
+  const n = normalize(s);
+
+  if(n.includes('espalda') || n.includes('back')) return 'Backstroke';
+  if(n.includes('libre') || n.includes('free')) return 'Freestyle';
+  if(n.includes('mariposa') || n.includes('fly')) return 'Butterfly';
+  if(n.includes('braza') || n.includes('breast')) return 'Breaststroke';
+  if(n.includes('estilos') || n.includes('estilo') || n.includes('medley') || n.includes('im')) return 'Medley';
+
+  return '';
+}
+
+function eventDisplay(event){
+  const en = strokeEnglish(event);
+  return en ? `${event} / ${en}` : event;
+}
+
+function buildAutocompleteOptions(rows){
+  const swimmers = uniqueSorted(rows.map(r => displaySwimmerName(r.canonical_swimmer)));
+  const clubs = uniqueSorted(rows.map(r => r.club));
+  return uniqueSorted([...swimmers, ...clubs]);
+}
+
+function mountAutocomplete(datalistId, inputId, rows){
+  let datalist = document.getElementById(datalistId);
+
+  if(!datalist){
+    datalist = document.createElement('datalist');
+    datalist.id = datalistId;
+    document.body.appendChild(datalist);
+  }
+
+  const input = document.getElementById(inputId);
+  if(input) input.setAttribute('list', datalistId);
+
+  datalist.innerHTML = buildAutocompleteOptions(rows)
+    .map(v => `<option value="${escapeHtml(v)}"></option>`)
+    .join('');
+}

@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Event</title>
+<script src="data/app.js"></script>
+</head>
+
+<body>
+
+<div class="wrap">
+
+<a id="backMeet">← Back</a>
+
+<div id="eventHero"></div>
+
+<table>
+<thead>
+<tr>
+<th>Rank</th>
+<th>Swimmer</th>
+<th>Club</th>
+<th>Time</th>
+</tr>
+</thead>
+
+<tbody id="results"></tbody>
+</table>
+
+</div>
+
+<script>
+
+injectStyles()
+
+const id = getParam("id")
+
+loadRows().then(rows=>{
+
+const row = rows.find(r=>eventId(r)===id)
+
+const results = rows
+.filter(r=>eventId(r)===id)
+.sort((a,b)=>a.rank-b.rank)
+
+document.getElementById("eventHero").innerHTML =
+`<h1>${eventDisplay(row.event)}</h1>`
+
+document.getElementById("backMeet").href =
+"meet.html?id="+encodeURIComponent(meetId(row))
+
+document.getElementById("results").innerHTML =
+results.map(r=>`
+
+<tr>
+
+<td>${r.rank}</td>
+
+<td>
+<a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">
+${displaySwimmerName(r.canonical_swimmer)}
+</a>
+</td>
+
+<td>${r.club}</td>
+<td>${r.time}</td>
+
+</tr>
+
+`).join("")
+
+})
+
+</script>
+
+</body>
+</html>

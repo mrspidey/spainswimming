@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meet</title>
+<script src="data/app.js"></script>
+</head>
+
+<body>
+
+<div class="wrap">
+
+<a href="index.html">← Back</a>
+
+<div id="meetHero"></div>
+<div id="eventList"></div>
+
+</div>
+
+<script>
+
+injectStyles()
+
+const id = getParam("id")
+
+loadRows().then(rows=>{
+
+const meet = groupMeets(rows).find(m=>m.id===id)
+
+document.getElementById("meetHero").innerHTML = `
+<h1>${meet.meet}</h1>
+<div class="muted">${meet.venue} · ${meet.date}</div>
+`
+
+const events = uniqueSorted(meet.rows.map(r=>r.event))
+
+document.getElementById("eventList").innerHTML = events.map(ev=>{
+
+const row = meet.rows.find(r=>r.event===ev)
+
+return `
+
+<div class="listCard">
+
+<h3>
+<a href="event.html?id=${encodeURIComponent(eventId(row))}">
+${eventDisplay(row.event)}
+</a>
+</h3>
+
+</div>
+`
+
+}).join("")
+
+})
+
+</script>
+
+</body>
+</html>

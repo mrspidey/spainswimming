@@ -313,13 +313,6 @@
       return v;
     }
 
-    function canonicalMeetName(name){
-      return normalize(name || "")
-        .replace(/\\ba\\b/g, "a")
-        .replace(/\\s+/g, " ")
-        .trim();
-    }
-
     function preferMeetName(names){
       const cleaned = [...new Set(names.filter(Boolean))];
       if (!cleaned.length) return "";
@@ -327,18 +320,11 @@
       return cleaned[0];
     }
 
-    function meetGroupKey(row){
-      const dateIso = normalize(row.dateIso || row.date || "");
-      const venue = normalize(row.venue || "");
-      const meet = canonicalMeetName(row.meet || "");
-      return [dateIso, venue, meet].join("|");
-    }
-
     function groupMeetRows(rows){
       const map = new Map();
 
       rows.forEach(r => {
-        const key = meetGroupKey(r);
+        const key = meetId(r);
         if (!map.has(key)) map.set(key, []);
         map.get(key).push(r);
       });
@@ -348,12 +334,11 @@
         const venue = preferMeetName(group.map(r => r.venue));
         const province = preferMeetName(group.map(r => r.province));
         const dateIso = preferMeetName(group.map(r => r.dateIso || r.date));
-
         const uniqueEvents = uniqueSorted(group.map(r => canonicalEventKey(r.event)));
         const uniqueSwimmers = uniqueSorted(group.map(r => r.canonical_swimmer));
 
         return {
-          id: [normalize(meetName), normalize(venue), normalize(dateIso)].join("|"),
+          id: meetId(group[0]),
           meet: meetName,
           venue,
           province,

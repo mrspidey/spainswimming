@@ -324,12 +324,17 @@
       const map = new Map();
 
       rows.forEach(r => {
-        const key = meetId(r);
+        const key = normalize([
+          r.meet,
+          r.dateIso || r.date
+        ].join("|"));
+
         if (!map.has(key)) map.set(key, []);
         map.get(key).push(r);
       });
 
       return [...map.values()].map(group => {
+        const first = group[0];
         const meetName = preferMeetName(group.map(r => r.meet));
         const venue = preferMeetName(group.map(r => r.venue));
         const province = preferMeetName(group.map(r => r.province));
@@ -338,7 +343,7 @@
         const uniqueSwimmers = uniqueSorted(group.map(r => r.canonical_swimmer));
 
         return {
-          id: meetId(group[0]),
+          id: meetId(first),
           meet: meetName,
           venue,
           province,

@@ -1,1 +1,139 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Meet</title><script src="data/app.js"></script></head><body><div class="wrap"><div class="nav"><a href="index.html">Home</a><a href="search.html">Search</a><a href="clubs.html">Clubs</a></div><a href="index.html">← Back to latest meets</a><div id="meetHero" style="margin-top:12px"></div><div id="eventList" class="stack" style="margin-top:14px"></div></div><script>injectStyles();const id=getParam('id');loadRows().then(rows=>{const meet=groupMeets(rows).find(m=>m.id===id);if(!meet){document.getElementById('meetHero').innerHTML='<div class="card panel"><div class="empty">Meet not found.</div></div>';return;}document.getElementById('meetHero').innerHTML=`<div class="card panel"><h1>${escapeHtml(meet.meet)}</h1><div class="muted">${escapeHtml(meet.venue)} · ${escapeHtml(meet.date)} · ${escapeHtml(meet.province || meet.region)}</div><div style="margin-top:8px"><span class="badge">${meet.eventCount} events</span><span class="badge">${meet.swimmerCount} swimmers</span></div></div>`;const events=uniqueSorted(meet.rows.map(r=>r.event)).map(ev=>meet.rows.find(r=>r.event===ev)).sort((a,b)=>(a.distance||0)-(b.distance||0)||a.event.localeCompare(b.event,'es'));document.getElementById('eventList').innerHTML=events.map(r=>{const count=meet.rows.filter(x=>x.event===r.event).length;return `<div class="listCard"><h3><a href="event.html?id=${encodeURIComponent(eventId(r))}">${escapeHtml(eventDisplay(r.event))}</a></h3><div class="muted">${escapeHtml(r.stroke)} · ${count} results</div><div style="margin-top:10px"><a href="event.html?id=${encodeURIComponent(eventId(r))}">Open event →</a></div></div>`;}).join('');}).catch(err=>{console.error(err);document.getElementById('meetHero').innerHTML='<div class="card panel"><div class="empty">Could not load the CSV file.</div></div>';});</script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meet Results</title>
+  <script src="data/app.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="nav">
+      <a href="index.html">Home</a>
+      <a href="search.html">Search</a>
+      <a href="clubs.html">Clubs</a>
+    </div>
+
+    <a href="index.html">← Back to latest meets</a>
+
+    <div class="card panel" style="margin-top:14px">
+      <div class="hero">
+        <div>
+          <h1 id="meetTitle">Meet</h1>
+          <div class="muted" id="meetMeta"></div>
+        </div>
+        <div class="kpiGrid" style="max-width:640px;width:100%">
+          <div class="kpi">
+            <div class="label">Events</div>
+            <div class="value" id="kpiEvents">0</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Swimmers</div>
+            <div class="value" id="kpiSwimmers">0</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Results</div>
+            <div class="value" id="kpiResults">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card panel" style="margin-top:14px">
+      <h2 id="sectionTitle">Meet results</h2>
+      <div class="tableWrap">
+        <table>
+          <thead id="tableHead"></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    injectStyles();
+
+    const meetParamId = getParam("id");
+    const meetParamLegacy = getParam("meet");
+
+    function matchMeetRow(r){
+      if (meetParamId && meetId(r) === meetParamId) return true;
+      if (meetParamLegacy && normalize(r.meet) === normalize(meetParamLegacy)) return true;
+      return false;
+    }
+
+    loadRows().then(rows => {
+      const meetRows = rows.filter(matchMeetRow);
+
+      if (!meetRows.length) {
+        document.getElementById("meetTitle").textContent = "Meet not found";
+        document.getElementById("meetMeta").textContent = "No results found for this meet.";
+        document.getElementById("tableBody").innerHTML = `<tr><td class="empty">No data found.</td></tr>`;
+        return;
+      }
+
+      const meetTitle = [...new Set(meetRows.map(r => r.meet).filter(Boolean))].sort((a,b)=>b.length-a.length)[0];
+      const venue = [...new Set(meetRows.map(r => r.venue).filter(Boolean))][0] || "";
+      const date = [...new Set(meetRows.map(r => r.date).filter(Boolean))][0] || "";
+      const province = [...new Set(meetRows.map(r => r.province).filter(Boolean))][0] || "";
+
+      document.getElementById("meetTitle").textContent = meetTitle;
+      document.getElementById("meetMeta").textContent = [venue, date, province].filter(Boolean).join(" · ");
+
+      document.getElementById("kpiEvents").textContent =
+        uniqueSorted(meetRows.map(r => canonicalEventKey(r.event))).length;
+      document.getElementById("kpiSwimmers").textContent =
+        uniqueSorted(meetRows.map(r => r.canonical_swimmer)).length;
+      document.getElementById("kpiResults").textContent = meetRows.length;
+
+      const groupedByEvent = new Map();
+      meetRows.forEach(r => {
+        const key = canonicalEventKey(r.event);
+        if (!groupedByEvent.has(key)) groupedByEvent.set(key, []);
+        groupedByEvent.get(key).push(r);
+      });
+
+      const eventGroups = [...groupedByEvent.values()].sort((a,b) => {
+        const ea = canonicalEventKey(a[0].event);
+        const eb = canonicalEventKey(b[0].event);
+        return ea.localeCompare(eb, "es");
+      });
+
+      document.getElementById("sectionTitle").textContent = `Meet results (${meetRows.length})`;
+      document.getElementById("tableHead").innerHTML = `
+        <tr>
+          <th>Event</th>
+          <th>Place</th>
+          <th>Swimmer</th>
+          <th>Club</th>
+          <th>Time</th>
+        </tr>
+      `;
+
+      document.getElementById("tableBody").innerHTML = eventGroups.map(group => {
+        const sorted = [...group].sort((a,b) =>
+          a.rank - b.rank || a.timeSeconds - b.timeSeconds
+        );
+
+        return sorted.map((r, idx) => `
+          <tr>
+            <td data-label="Event">${idx === 0 ? escapeHtml(eventDisplay(r.event)) : ""}</td>
+            <td data-label="Place">${r.rank || ""}</td>
+            <td data-label="Swimmer">
+              <a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">
+                ${escapeHtml(displaySwimmerName(r.canonical_swimmer))}
+              </a>
+            </td>
+            <td data-label="Club">${escapeHtml(r.club)}</td>
+            <td data-label="Time">${escapeHtml(r.time)}</td>
+          </tr>
+        `).join("");
+      }).join("");
+    }).catch(err => {
+      console.error(err);
+      document.getElementById("meetTitle").textContent = "Failed to load meet";
+      document.getElementById("tableBody").innerHTML = `<tr><td class="empty">Could not load the CSV file.</td></tr>`;
+    });
+  </script>
+</body>
+</html>

@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+\<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Search</title>
+  <title>Search Results</title>
   <script src="data/app.js"></script>
 </head>
 <body>
@@ -17,33 +17,29 @@
     <h1>Search results</h1>
 
     <div class="grid sidebar">
-      <div class="card panel">
-        <div class="stack">
-          <div class="nav" style="margin-bottom:0">
-            <a href="#" id="resultsModeBtn" class="active">All results</a>
-            <a href="#" id="rankingsModeBtn">Rankings</a>
-          </div>
-
-          <input id="searchBox" placeholder="Search swimmer or club" />
-          <select id="seasonFilter"><option value="">All seasons</option></select>
-          <select id="provinceFilter"><option value="">All provinces</option></select>
-          <select id="venueFilter"><option value="">All venues</option></select>
-          <select id="clubFilter"><option value="">All clubs</option></select>
-          <select id="strokeFilter"><option value="">All strokes</option></select>
-          <select id="eventFilter"><option value="">All events</option></select>
-          <button id="clearBtn">Clear filters</button>
+      <div class="card panel stack">
+        <div class="nav" style="margin:0">
+          <a href="#" id="allBtn" class="active">All results</a>
+          <a href="#" id="rankBtn">Rankings</a>
         </div>
+
+        <input id="searchInput" type="text" placeholder="Search swimmer or club" />
+        <select id="seasonFilter"><option value="">All seasons</option></select>
+        <select id="provinceFilter"><option value="">All provinces</option></select>
+        <select id="venueFilter"><option value="">All venues</option></select>
+        <select id="clubFilter"><option value="">All clubs</option></select>
+        <select id="strokeFilter"><option value="">All strokes</option></select>
+        <select id="eventFilter"><option value="">All events</option></select>
+        <button id="clearBtn">Clear filters</button>
       </div>
 
-      <div class="stack">
-        <div class="card panel">
-          <h2 id="title">Results</h2>
-          <div class="tableWrap">
-            <table>
-              <thead id="tableHead"></thead>
-              <tbody id="results"></tbody>
-            </table>
-          </div>
+      <div class="card panel">
+        <h2 id="sectionTitle">All results</h2>
+        <div class="tableWrap">
+          <table>
+            <thead id="tableHead"></thead>
+            <tbody id="tableBody"></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -53,280 +49,223 @@
     injectStyles();
 
     let rows = [];
-    let mode = "results";
+    let mode = "all";
 
-    function fillSelect(id, values, current, labelOverride) {
-      const el = document.getElementById(id);
-      const label = labelOverride || el.options[0]?.textContent || "All";
-      el.innerHTML = "";
+    function canonicalEventDisplay(event){
+      const key = canonicalEventKey(event);
+      const m = key.match(/^(\d+)\s+(back|free|fly|breast|im)$/);
+      if (!m) return eventDisplay(event);
 
-      const first = document.createElement("option");
-      first.value = "";
-      first.textContent = label;
-      el.appendChild(first);
+      const strokeMap = {
+        back: "Backstroke",
+        free: "Freestyle",
+        fly: "Butterfly",
+        breast: "Breaststroke",
+        im: "Medley"
+      };
 
-      values.forEach(v => {
-        const o = document.createElement("option");
-        o.value = v.value ?? v;
-        o.textContent = v.label ?? v;
-        if ((v.value ?? v) === current) o.selected = true;
-        el.appendChild(o);
-      });
+      return `${m[1]}m ${strokeMap[m[2]]}`;
     }
 
-    function ordinal(n){
-      if(!n) return "";
-      const s = ["th","st","nd","rd"];
-      const v = n % 100;
-      return n + (s[(v - 20) % 10] || s[v] || s[0]);
+    function buildEventOptions(rows){
+      const map = new Map();
+      rows.forEach(r => {
+        const key = canonicalEventKey(r.event);
+        if (!key) return;
+        map.set(key, canonicalEventDisplay(r.event));
+      });
+
+      return [...map.entries()]
+        .sort((a,b) => a[1].localeCompare(b[1], "es"))
+        .map(([value, label]) => ({ value, label }));
+    }
+
+    function fillSelect(el, values, placeholder){
+      el.innerHTML = `<option value="">${placeholder}</option>` +
+        values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+    }
+
+    function fillEventSelect(el, rows){
+      const opts = buildEventOptions(rows);
+      el.innerHTML = `<option value="">All events</option>` +
+        opts.map(o => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join("");
     }
 
     function getFilteredRows(){
-      const q = document.getElementById("searchBox").value.trim();
+      const q = normalize(document.getElementById("searchInput").value);
       const season = document.getElementById("seasonFilter").value;
       const province = document.getElementById("provinceFilter").value;
       const venue = document.getElementById("venueFilter").value;
       const club = document.getElementById("clubFilter").value;
       const stroke = document.getElementById("strokeFilter").value;
-      const event = document.getElementById("eventFilter").value;
+      const eventKey = document.getElementById("eventFilter").value;
 
-      return rows
-        .filter(r => !season || r.season === season)
-        .filter(r => !province || r.province === province)
-        .filter(r => !venue || r.venue === venue)
-        .filter(r => !club || r.club === club)
-        .filter(r => !stroke || strokeEnglish(r.stroke || r.event) === stroke)
-        .filter(r => !event || r.event === event)
-        .filter(r => !q || [
-          displaySwimmerName(r.canonical_swimmer),
-          r.canonical_swimmer,
-          r.swimmer_raw,
-          r.club,
-          r.meet,
-          r.event,
-          r.venue,
-          r.province
-        ].some(v => normalize(v).includes(normalize(q))));
-    }
-
-    function updateEventFilter(){
-      const stroke = document.getElementById("strokeFilter").value;
-      const current = document.getElementById("eventFilter").value;
-
-      const scoped = stroke
-        ? rows.filter(r => strokeEnglish(r.stroke || r.event) === stroke)
-        : rows;
-
-      const events = uniqueSorted(scoped.map(r => r.event))
-        .sort((a, b) => eventSort(a, b, rows))
-        .map(ev => ({ value: ev, label: eventDisplay(ev) }));
-
-      fillSelect("eventFilter", events, current, "All events");
-
-      const stillExists = events.some(e => e.value === current);
-      if (current && !stillExists) {
-        document.getElementById("eventFilter").value = "";
-      }
-    }
-
-    function computeRacePlaces(list){
-      const grouped = new Map();
-
-      list.forEach(r => {
-        const key = [r.event, r.meet, r.venue, r.dateIso || r.date].join("|");
-        if (!grouped.has(key)) grouped.set(key, []);
-        grouped.get(key).push(r);
-      });
-
-      const placeMap = new Map();
-
-      grouped.forEach(arr => {
-        arr.sort((a, b) =>
-          (a.rank || 9999) - (b.rank || 9999) ||
-          a.timeSeconds - b.timeSeconds ||
-          a.canonical_swimmer.localeCompare(b.canonical_swimmer, "es")
-        );
-
-        let prevMetric = null;
-        let place = 0;
-
-        arr.forEach((r, idx) => {
-          const metric = (r.rank && r.rank > 0) ? `rank:${r.rank}` : `time:${r.timeSeconds}`;
-          if (metric !== prevMetric) place = idx + 1;
-          prevMetric = metric;
-          placeMap.set(r, place);
-        });
-      });
-
-      return placeMap;
-    }
-
-    function computeRankings(list){
-      const grouped = new Map();
-
-      list.forEach(r => {
-        const key = r.event;
-        if (!grouped.has(key)) grouped.set(key, new Map());
-
-        const bySwimmer = grouped.get(key);
-        const existing = bySwimmer.get(r.canonical_swimmer);
-
-        if (!existing || r.timeSeconds < existing.timeSeconds) {
-          bySwimmer.set(r.canonical_swimmer, r);
+      return rows.filter(r => {
+        if (q) {
+          const hay = normalize([
+            r.canonical_swimmer,
+            displaySwimmerName(r.canonical_swimmer),
+            r.club
+          ].join(" "));
+          if (!hay.includes(q)) return false;
         }
+
+        if (season && r.season !== season) return false;
+        if (province && r.province !== province) return false;
+        if (venue && r.venue !== venue) return false;
+        if (club && r.club !== club) return false;
+        if (stroke && strokeEnglish(r.event) !== stroke) return false;
+        if (eventKey && canonicalEventKey(r.event) !== eventKey) return false;
+
+        return true;
+      });
+    }
+
+    function bestRowsBySwimmer(rowsIn){
+      const by = new Map();
+
+      rowsIn.forEach(r => {
+        const key = normalize([r.canonical_swimmer, canonicalEventKey(r.event)].join("|"));
+        const ex = by.get(key);
+        if (!ex || r.timeSeconds < ex.timeSeconds) by.set(key, r);
       });
 
-      const rankedRows = [];
-
-      grouped.forEach((bySwimmer, event) => {
-        const arr = [...bySwimmer.values()].sort((a, b) =>
-          a.timeSeconds - b.timeSeconds ||
-          a.canonical_swimmer.localeCompare(b.canonical_swimmer, "es")
-        );
-
-        let prevTime = null;
-        let place = 0;
-
-        arr.forEach((r, idx) => {
-          if (r.timeSeconds !== prevTime) place = idx + 1;
-          prevTime = r.timeSeconds;
-          rankedRows.push({ ...r, rankingPlace: place });
-        });
-      });
-
-      rankedRows.sort((a, b) =>
-        ((a.distance || 0) - (b.distance || 0)) ||
-        a.event.localeCompare(b.event, "es") ||
-        ((a.rankingPlace || 9999) - (b.rankingPlace || 9999))
+      return [...by.values()].sort((a,b) =>
+        a.timeSeconds - b.timeSeconds ||
+        a.canonical_swimmer.localeCompare(b.canonical_swimmer, "es")
       );
-
-      return rankedRows;
     }
 
     function render(){
-      document.getElementById("resultsModeBtn").classList.toggle("active", mode === "results");
-      document.getElementById("rankingsModeBtn").classList.toggle("active", mode === "rankings");
+      document.getElementById("allBtn").classList.toggle("active", mode === "all");
+      document.getElementById("rankBtn").classList.toggle("active", mode === "rank");
 
-      const out = getFilteredRows();
+      const filtered = getFilteredRows();
       const head = document.getElementById("tableHead");
-      const body = document.getElementById("results");
-      const title = document.getElementById("title");
+      const body = document.getElementById("tableBody");
+      const section = document.getElementById("sectionTitle");
 
-      if (mode === "results") {
-        const places = computeRacePlaces(out);
+      if (mode === "all") {
+        section.textContent = `All results (${filtered.length})`;
+        head.innerHTML = `
+          <tr>
+            <th>Place</th>
+            <th>Date</th>
+            <th>Event</th>
+            <th>Swimmer</th>
+            <th>Club</th>
+            <th>Meet</th>
+            <th>Time</th>
+          </tr>
+        `;
 
-        out.sort((a, b) =>
+        const sorted = [...filtered].sort((a,b) =>
           String(b.dateIso || b.date).localeCompare(String(a.dateIso || a.date)) ||
-          a.meet.localeCompare(b.meet, "es") ||
-          (((a.distance || 0) - (b.distance || 0)) || a.event.localeCompare(b.event, "es")) ||
-          ((places.get(a) || 9999) - (places.get(b) || 9999)) ||
-          (a.timeSeconds - b.timeSeconds)
+          a.rank - b.rank ||
+          a.timeSeconds - b.timeSeconds
         );
 
-        title.textContent = `All results (${out.length})`;
-        head.innerHTML = `<tr><th>Place</th><th>Date</th><th>Event</th><th>Swimmer</th><th>Club</th><th>Meet</th><th>Time</th></tr>`;
-
-        body.innerHTML = out.map(r => `
+        body.innerHTML = sorted.map(r => `
           <tr>
-            <td data-label="Place">${ordinal(places.get(r) || r.rank || "")}</td>
+            <td data-label="Place">${r.rank || ""}</td>
             <td data-label="Date">${escapeHtml(r.date)}</td>
             <td data-label="Event">${escapeHtml(eventDisplay(r.event))}</td>
             <td data-label="Swimmer">
-              <a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">${escapeHtml(displaySwimmerName(r.canonical_swimmer))}</a>
+              <a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">
+                ${escapeHtml(displaySwimmerName(r.canonical_swimmer))}
+              </a>
             </td>
             <td data-label="Club">${escapeHtml(r.club)}</td>
             <td data-label="Meet">${escapeHtml(r.meet)}<div class="small">${escapeHtml(r.venue)}</div></td>
             <td data-label="Time">${escapeHtml(r.time)}</td>
           </tr>
-        `).join("") || `<tr><td class="empty">No rows found.</td></tr>`;
+        `).join("") || `<tr><td colspan="7" class="empty">No data found.</td></tr>`;
       } else {
-        const ranked = computeRankings(out);
-
-        title.textContent = `Rankings (${ranked.length})`;
-        head.innerHTML = `<tr><th>Rank</th><th>Event</th><th>Swimmer</th><th>Club</th><th>Best time</th><th>Meet</th><th>Date</th></tr>`;
-
-        body.innerHTML = ranked.map(r => `
+        const ranked = bestRowsBySwimmer(filtered);
+        section.textContent = `Rankings (${ranked.length})`;
+        head.innerHTML = `
           <tr>
-            <td data-label="Rank">${ordinal(r.rankingPlace)}</td>
-            <td data-label="Event">${escapeHtml(eventDisplay(r.event))}</td>
+            <th>Rank</th>
+            <th>Swimmer</th>
+            <th>Club</th>
+            <th>Event</th>
+            <th>Meet</th>
+            <th>Date</th>
+            <th>Time</th>
+          </tr>
+        `;
+
+        body.innerHTML = ranked.map((r, i) => `
+          <tr>
+            <td data-label="Rank" class="rank">${i + 1}</td>
             <td data-label="Swimmer">
-              <a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">${escapeHtml(displaySwimmerName(r.canonical_swimmer))}</a>
+              <a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">
+                ${escapeHtml(displaySwimmerName(r.canonical_swimmer))}
+              </a>
             </td>
             <td data-label="Club">${escapeHtml(r.club)}</td>
-            <td data-label="Best time">${escapeHtml(r.time)}</td>
+            <td data-label="Event">${escapeHtml(eventDisplay(r.event))}</td>
             <td data-label="Meet">${escapeHtml(r.meet)}<div class="small">${escapeHtml(r.venue)}</div></td>
             <td data-label="Date">${escapeHtml(r.date)}</td>
+            <td data-label="Time">${escapeHtml(r.time)}</td>
           </tr>
-        `).join("") || `<tr><td class="empty">No rows found.</td></tr>`;
+        `).join("") || `<tr><td colspan="7" class="empty">No data found.</td></tr>`;
       }
     }
 
-    loadRows().then(r => {
-      rows = r;
+    loadRows().then(allRows => {
+      rows = allRows;
 
-      mountAutocomplete("searchSuggestions", "searchBox", rows);
+      fillSelect(document.getElementById("seasonFilter"), uniqueSorted(rows.map(r => r.season)), "All seasons");
+      fillSelect(document.getElementById("provinceFilter"), uniqueSorted(rows.map(r => r.province)), "All provinces");
+      fillSelect(document.getElementById("venueFilter"), uniqueSorted(rows.map(r => r.venue)), "All venues");
+      fillSelect(document.getElementById("clubFilter"), uniqueSorted(rows.map(r => r.club)), "All clubs");
+      fillSelect(document.getElementById("strokeFilter"), uniqueSorted(rows.map(r => strokeEnglish(r.event)).filter(Boolean)), "All strokes");
+      fillEventSelect(document.getElementById("eventFilter"), rows);
 
-      fillSelect("seasonFilter", uniqueSorted(rows.map(r => r.season)), "");
-      fillSelect("provinceFilter", uniqueSorted(rows.map(r => r.province)), "");
-      fillSelect("venueFilter", uniqueSorted(rows.map(r => r.venue)), "");
-      fillSelect("clubFilter", uniqueSorted(rows.map(r => r.club)), "");
-      fillSelect("strokeFilter", [
-        { value: "Backstroke", label: "Espalda / Backstroke" },
-        { value: "Breaststroke", label: "Braza / Breaststroke" },
-        { value: "Butterfly", label: "Mariposa / Butterfly" },
-        { value: "Freestyle", label: "Libre / Freestyle" },
-        { value: "Medley", label: "Estilos / Medley" }
-      ], "", "All strokes");
+      mountAutocomplete("searchDataList", "searchInput", rows);
 
-      updateEventFilter();
-
-      ["searchBox","seasonFilter","provinceFilter","venueFilter","clubFilter","eventFilter"].forEach(id => {
-        document.getElementById(id).addEventListener(id === "searchBox" ? "input" : "change", render);
+      document.getElementById("allBtn").addEventListener("click", e => {
+        e.preventDefault();
+        mode = "all";
+        render();
       });
 
-      document.getElementById("strokeFilter").addEventListener("change", () => {
-        updateEventFilter();
+      document.getElementById("rankBtn").addEventListener("click", e => {
+        e.preventDefault();
+        mode = "rank";
         render();
+      });
+
+      [
+        "searchInput",
+        "seasonFilter",
+        "provinceFilter",
+        "venueFilter",
+        "clubFilter",
+        "strokeFilter",
+        "eventFilter"
+      ].forEach(id => {
+        document.getElementById(id).addEventListener("input", render);
+        document.getElementById(id).addEventListener("change", render);
       });
 
       document.getElementById("clearBtn").addEventListener("click", () => {
-        document.getElementById("searchBox").value = "";
-        ["seasonFilter","provinceFilter","venueFilter","clubFilter","strokeFilter","eventFilter"].forEach(id => {
-          document.getElementById(id).value = "";
-        });
-        updateEventFilter();
-        render();
-      });
-
-      document.getElementById("resultsModeBtn").addEventListener("click", e => {
-        e.preventDefault();
-        mode = "results";
-        render();
-      });
-
-      document.getElementById("rankingsModeBtn").addEventListener("click", e => {
-        e.preventDefault();
-        mode = "rankings";
+        document.getElementById("searchInput").value = "";
+        document.getElementById("seasonFilter").value = "";
+        document.getElementById("provinceFilter").value = "";
+        document.getElementById("venueFilter").value = "";
+        document.getElementById("clubFilter").value = "";
+        document.getElementById("strokeFilter").value = "";
+        document.getElementById("eventFilter").value = "";
         render();
       });
 
       render();
     }).catch(err => {
       console.error(err);
-      document.getElementById("results").innerHTML = `<tr><td class="empty">Could not load the CSV file.</td></tr>`;
+      document.body.insertAdjacentHTML("beforeend", `<div class="wrap"><div class="card panel">Could not load the CSV file.</div></div>`);
     });
   </script>
 </body>
-</html>'''
-(base / "search.html").write_text(search_html, encoding="utf-8")
-
-# zip
-zip_path = Path("/mnt/data/spainswimming_complete_rebuild.zip")
-with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
-    for root, dirs, files in os.walk(base):
-        for f in files:
-            full = Path(root) / f
-            z.write(full, full.relative_to(base).as_posix())
-
-print(str(zip_path))
-print((base / "index.html").exists(), (base / "search.html").exists(), (base / "data" / "app.js").exists())
+</html>

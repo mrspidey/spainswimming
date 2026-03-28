@@ -1,4 +1,4 @@
-\<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -50,22 +50,6 @@
 
     let rows = [];
     let mode = "all";
-
-    function canonicalEventDisplay(event){
-      const key = canonicalEventKey(event);
-      const m = key.match(/^(\d+)\s+(back|free|fly|breast|im)$/);
-      if (!m) return eventDisplay(event);
-
-      const strokeMap = {
-        back: "Backstroke",
-        free: "Freestyle",
-        fly: "Butterfly",
-        breast: "Breaststroke",
-        im: "Medley"
-      };
-
-      return `${m[1]}m ${strokeMap[m[2]]}`;
-    }
 
     function buildEventOptions(rows){
       const map = new Map();
@@ -169,7 +153,7 @@
           <tr>
             <td data-label="Place">${r.rank || ""}</td>
             <td data-label="Date">${escapeHtml(r.date)}</td>
-            <td data-label="Event">${escapeHtml(eventDisplay(r.event))}</td>
+            <td data-label="Event">${escapeHtml(canonicalEventDisplay(r.event))}</td>
             <td data-label="Swimmer">
               <a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">
                 ${escapeHtml(displaySwimmerName(r.canonical_swimmer))}
@@ -204,7 +188,7 @@
               </a>
             </td>
             <td data-label="Club">${escapeHtml(r.club)}</td>
-            <td data-label="Event">${escapeHtml(eventDisplay(r.event))}</td>
+            <td data-label="Event">${escapeHtml(canonicalEventDisplay(r.event))}</td>
             <td data-label="Meet">${escapeHtml(r.meet)}<div class="small">${escapeHtml(r.venue)}</div></td>
             <td data-label="Date">${escapeHtml(r.date)}</td>
             <td data-label="Time">${escapeHtml(r.time)}</td>

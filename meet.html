@@ -117,7 +117,7 @@
 
         return sorted.map((r, idx) => `
           <tr>
-            <td data-label="Event">${idx === 0 ? escapeHtml(eventDisplay(r.event)) : ""}</td>
+            <td data-label="Event">${idx === 0 ? escapeHtml(canonicalEventDisplay(r.event)) : ""}</td>
             <td data-label="Place">${r.rank || ""}</td>
             <td data-label="Swimmer">
               <a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">

@@ -70,6 +70,11 @@
     .dot-line{background:#0EA5E9}
     .dot-best{background:#16A34A}
     .subtle{color:var(--muted);font-size:13px}
+    @media (max-width: 900px){
+      .hero{
+        flex-direction:column;
+      }
+    }
   </style>
 </head>
 <body>
@@ -133,62 +138,6 @@
     injectStyles();
 
     const swimmerNameParam = getParam("name") || "";
-    const JACK_CANONICAL = "SIMEONOV, Jack Hristov";
-
-    function parseSimpleCSV(text){
-      const clean = text.replace(/^\uFEFF/,'').replace(/\r/g,'');
-      const lines = clean.split('\n').filter(x => x.trim() !== '');
-      if(!lines.length) return [];
-      const headers = parseCsvLine(lines[0]).map(h => h.trim());
-
-      return lines.slice(1).map(line => {
-        const vals = parseCsvLine(line);
-        const obj = {};
-        headers.forEach((h,i)=> obj[h] = (vals[i] ?? '').trim());
-        return obj;
-      }).filter(r => Object.values(r).some(v => String(v || "").trim() !== ""));
-    }
-
-    async function fetchOptionalCsv(path){
-      try {
-        const text = await fetch(path, { cache: "no-store" }).then(r => {
-          if (!r.ok) throw new Error(path);
-          return r.text();
-        });
-        return parseSimpleCSV(text);
-      } catch (e) {
-        return [];
-      }
-    }
-
-    function mapJackRow(r){
-      const event = r.event || "";
-      return {
-        canonical_swimmer: r.canonical_swimmer || "",
-        event,
-        course: r.course || "",
-        time: r.time || "",
-        timeSeconds: timeToSeconds(r.time || ""),
-        date: r.date || "",
-        dateIso: r.date || "",
-        meet: r.meet || "",
-        venue: r.venue || "",
-        club: r.club || "",
-        province: inferProvinceFromJackRow(r),
-        season: "2025/26",
-        rank: "",
-        source: r.source || "",
-        source_url: r.source_url || ""
-      };
-    }
-
-    function inferProvinceFromJackRow(r){
-      const blob = `${r.meet || ""} ${r.venue || ""}`.toLowerCase();
-      if (/(gandia|xativa|xàtiva|xirivella|benimamet|valencia)/.test(blob)) return "Valencia";
-      if (/(castellon|castellón|vila-real|vilareal)/.test(blob)) return "Castellon";
-      if (/(elda|sax|alicante|petrer)/.test(blob)) return "Alicante";
-      return "";
-    }
 
     function swimmerRowsValid(rows){
       return rows.filter(r =>
@@ -200,10 +149,11 @@
       );
     }
 
-    function bestRowsByEventCourse(rows){
+    function bestRowsByEvent(rows){
       const by = new Map();
       rows.forEach(r => {
-        const key = `${canonicalEventKey(r.event)}|${r.course || ""}`;
+        const key = canonicalEventKey(r.event);
+        if (!key) return;
         const ex = by.get(key);
         if (!ex || r.timeSeconds < ex.timeSeconds) by.set(key, r);
       });
@@ -211,59 +161,15 @@
       return [...by.values()].sort((a,b) => {
         const da = Number((canonicalEventKey(a.event).match(/\d+/)||["0"])[0]);
         const db = Number((canonicalEventKey(b.event).match(/\d+/)||["0"])[0]);
-        return da - db ||
-          canonicalEventKey(a.event).localeCompare(canonicalEventKey(b.event), "es") ||
-          String(a.course || "").localeCompare(String(b.course || ""));
+        return da - db || canonicalEventKey(a.event).localeCompare(canonicalEventKey(b.event), "es");
       });
-    }
-
-    function latestRowsByEventCourse(rows){
-      const by = new Map();
-      rows.forEach(r => {
-        const key = `${canonicalEventKey(r.event)}|${r.course || ""}`;
-        const ex = by.get(key);
-        if (!ex || String(r.dateIso || "") > String(ex.dateIso || "")) by.set(key, r);
-      });
-      return by;
-    }
-
-    function getRanksForEvent(masterRows, eventKey, province, swimmerCanonical){
-      const nationalRows = masterRows.filter(x => canonicalEventKey(x.event) === eventKey && x.timeSeconds != null);
-      const nationalBest = new Map();
-
-      nationalRows.forEach(x => {
-        const key = normalize(x.canonical_swimmer);
-        const ex = nationalBest.get(key);
-        if (!ex || x.timeSeconds < ex.timeSeconds) nationalBest.set(key, x);
-      });
-
-      const nationalRanked = [...nationalBest.values()].sort((a, b) => a.timeSeconds - b.timeSeconds);
-
-      const provincialRows = masterRows.filter(x =>
-        canonicalEventKey(x.event) === eventKey &&
-        x.timeSeconds != null &&
-        normalize(x.province) === normalize(province)
-      );
-      const provincialBest = new Map();
-
-      provincialRows.forEach(x => {
-        const key = normalize(x.canonical_swimmer);
-        const ex = provincialBest.get(key);
-        if (!ex || x.timeSeconds < ex.timeSeconds) provincialBest.set(key, x);
-      });
-
-      const provincialRanked = [...provincialBest.values()].sort((a, b) => a.timeSeconds - b.timeSeconds);
-
-      return {
-        provincial: provincialRanked.findIndex(x => normalize(x.canonical_swimmer) === normalize(swimmerCanonical)) + 1,
-        national: nationalRanked.findIndex(x => normalize(x.canonical_swimmer) === normalize(swimmerCanonical)) + 1
-      };
     }
 
     function getGraphSeries(rows, maxItems = 6){
       const groups = new Map();
       rows.forEach(r => {
-        const key = `${canonicalEventKey(r.event)}|${r.course || ""}`;
+        const key = canonicalEventKey(r.event);
+        if (!key) return;
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key).push(r);
       });
@@ -275,7 +181,7 @@
     }
 
     function buildSparklineSVG(rows){
-      const values = rows.map(r => r.timeSeconds).filter(v => v != null);
+      const values = rows.map(r => r.timeSeconds).filter(v => Number.isFinite(v));
       const width = 280;
       const height = 120;
       const pad = 14;
@@ -316,13 +222,12 @@
       block.style.display = "grid";
       block.innerHTML = series.map(([, vals]) => {
         const eventLabel = canonicalEventDisplay(vals[0].event);
-        const course = vals[0].course || "";
         const latest = vals[vals.length - 1];
         const best = vals.reduce((a,b) => a.timeSeconds < b.timeSeconds ? a : b);
         return `
           <div class="graph-card">
             <div class="graph-title">${escapeHtml(eventLabel)}</div>
-            <div class="graph-sub">${escapeHtml(course)} · ${vals.length} swims · best ${escapeHtml(best.time)}</div>
+            <div class="graph-sub">${vals.length} swims · best ${escapeHtml(best.time)}</div>
             <div class="svg-wrap">${buildSparklineSVG(vals)}</div>
             <div class="legend">
               <span><span class="dot dot-line"></span> Progress</span>
@@ -334,20 +239,16 @@
       }).join("");
     }
 
-    function renderBest(masterRows, swimmerRows, swimmerCanonical, isJack, jackPbsRows){
+    function renderBest(swimmerRows){
       document.getElementById("subtitle").textContent = "Best times for this swimmer across the current dataset.";
       document.getElementById("sectionTitle").textContent = "Best times";
 
-      const sourceRows = isJack && jackPbsRows.length ? jackPbsRows : swimmerRows;
-      const bests = bestRowsByEventCourse(sourceRows);
-      const head = document.getElementById("tableHead");
-      const body = document.getElementById("tableBody");
+      const bests = bestRowsByEvent(swimmerRows);
 
-      head.innerHTML = `
+      document.getElementById("tableHead").innerHTML = `
         <tr>
           <th>Event</th>
           <th>Best time</th>
-          <th>Course</th>
           <th>Meet</th>
           <th>Date</th>
           <th>Provincial rank</th>
@@ -355,220 +256,163 @@
         </tr>
       `;
 
-      body.innerHTML = bests.map(r => {
-        let prov = "—";
-        let nat = "—";
-
-        if (r.province) {
-          const ranks = getRanksForEvent(masterRows, canonicalEventKey(r.event), r.province || "", swimmerCanonical);
-          prov = ranks.provincial || "—";
-          nat = ranks.national || "—";
-        }
-
-        return `
-          <tr>
-            <td>${escapeHtml(canonicalEventDisplay(r.event))}</td>
-            <td>${escapeHtml(r.time)}</td>
-            <td>${escapeHtml(r.course || "")}</td>
-            <td>${escapeHtml(r.meet)}<div class="small">${escapeHtml(r.venue || "")}</div></td>
-            <td>${escapeHtml(r.date)}</td>
-            <td>${prov}</td>
-            <td>${nat}</td>
-          </tr>
-        `;
-      }).join("") || `<tr><td colspan="7" class="empty">No data found.</td></tr>`;
-
-      renderGraphs(swimmerRows);
-    }
-
-    function renderResults(swimmerRows){
-      document.getElementById("subtitle").textContent = "All recorded races for this swimmer in the current dataset.";
-      document.getElementById("sectionTitle").textContent = "All results";
-
-      const head = document.getElementById("tableHead");
-      const body = document.getElementById("tableBody");
-
-      const sorted = [...swimmerRows].sort((a,b) =>
-        String(b.dateIso || "").localeCompare(String(a.dateIso || "")) ||
-        (a.timeSeconds ?? 999999) - (b.timeSeconds ?? 999999)
-      );
-
-      head.innerHTML = `
+      document.getElementById("tableBody").innerHTML = bests.map(r => `
         <tr>
-          <th>Date</th>
-          <th>Event</th>
-          <th>Time</th>
-          <th>Course</th>
-          <th>Meet</th>
-          <th>Club</th>
-        </tr>
-      `;
-
-      body.innerHTML = sorted.map(r => `
-        <tr>
-          <td>${escapeHtml(r.date)}</td>
           <td>${escapeHtml(canonicalEventDisplay(r.event))}</td>
           <td>${escapeHtml(r.time)}</td>
-          <td>${escapeHtml(r.course || "")}</td>
           <td>${escapeHtml(r.meet)}<div class="small">${escapeHtml(r.venue || "")}</div></td>
-          <td>${escapeHtml(r.club || "")}</td>
+          <td>${escapeHtml(r.date)}</td>
+          <td>${r.rank || "—"}</td>
+          <td>—</td>
         </tr>
       `).join("") || `<tr><td colspan="6" class="empty">No data found.</td></tr>`;
 
       renderGraphs(swimmerRows);
     }
 
-    function renderProgress(swimmerRows, isJack){
+    function renderResults(swimmerRows){
+      document.getElementById("subtitle").textContent = "All recorded races for this swimmer across the current dataset.";
+      document.getElementById("sectionTitle").textContent = "All results";
+
+      const sorted = [...swimmerRows].sort((a,b)=>
+        String(b.dateIso || "").localeCompare(String(a.dateIso || "")) ||
+        (a.rank || 9999) - (b.rank || 9999) ||
+        a.timeSeconds - b.timeSeconds
+      );
+
+      document.getElementById("tableHead").innerHTML = `
+        <tr>
+          <th>Date</th>
+          <th>Event</th>
+          <th>Meet</th>
+          <th>Time</th>
+          <th>Club</th>
+        </tr>
+      `;
+
+      document.getElementById("tableBody").innerHTML = sorted.map(r => `
+        <tr>
+          <td>${escapeHtml(r.date)}</td>
+          <td>${escapeHtml(canonicalEventDisplay(r.event))}</td>
+          <td>${escapeHtml(r.meet)}<div class="small">${escapeHtml(r.venue || "")}</div></td>
+          <td>${escapeHtml(r.time)}</td>
+          <td>${escapeHtml(r.club)}</td>
+        </tr>
+      `).join("") || `<tr><td colspan="5" class="empty">No data found.</td></tr>`;
+
+      renderGraphs(swimmerRows);
+    }
+
+    function renderProgress(swimmerRows){
+      const isJack = isJackName(swimmerNameParam);
+
       document.getElementById("subtitle").textContent = isJack
-        ? "Baseline seeded from Bulgaria and World School results. Latest results are compared against current PBs."
+        ? "Baseline seeded from Bulgaria and World School results."
         : "Progress view is currently only configured for Jack.";
       document.getElementById("sectionTitle").textContent = "PB vs baseline";
 
-      const head = document.getElementById("tableHead");
-      const body = document.getElementById("tableBody");
-
       if (!isJack) {
-        head.innerHTML = `<tr><th>Message</th></tr>`;
-        body.innerHTML = `<tr><td class="empty">Baseline tracking is currently configured only for Jack Simeonov.</td></tr>`;
+        document.getElementById("tableHead").innerHTML = `<tr><th>Message</th></tr>`;
+        document.getElementById("tableBody").innerHTML = `<tr><td class="empty">Baseline tracking is currently configured only for Jack Simeonov.</td></tr>`;
         renderGraphs(swimmerRows);
         return;
       }
 
       const bestByKey = new Map();
-      const latestByKey = latestRowsByEventCourse(swimmerRows);
-
       swimmerRows.forEach(r => {
-        const key = `${canonicalEventKey(r.event)}|${r.course || ""}`;
+        const key = canonicalEventKey(r.event);
+        if (!key) return;
         const ex = bestByKey.get(key);
-        if (!ex || (r.timeSeconds != null && r.timeSeconds < ex.timeSeconds)) {
-          bestByKey.set(key, r);
-        }
+        if (!ex || r.timeSeconds < ex.timeSeconds) bestByKey.set(key, r);
       });
 
       const rowsOut = JACK_BASELINES.map(base => {
-        const key = `${base.key}|SCM`;
-        const currentPb = bestByKey.get(key);
-        const latest = latestByKey.get(key);
+        const currentPb = bestByKey.get(base.key);
         const baselineSecs = timeToSeconds(base.time);
         const pbSecs = currentPb ? currentPb.timeSeconds : baselineSecs;
-        const latestSecs = latest ? latest.timeSeconds : null;
 
         return {
           event: base.label,
           baseline: base.time,
-          baselineSource: base.source,
-          latest: latest ? latest.time : "—",
-          latestMeet: latest ? latest.meet : "",
-          latestDate: latest ? latest.date : "",
           pb: currentPb ? currentPb.time : base.time,
-          deltaLatestVsPb: latestSecs != null && pbSecs != null ? latestSecs - pbSecs : null,
-          deltaPbVsBaseline: pbSecs != null && baselineSecs != null ? pbSecs - baselineSecs : null
+          delta: pbSecs - baselineSecs,
+          source: base.source
         };
       });
 
-      head.innerHTML = `
+      document.getElementById("tableHead").innerHTML = `
         <tr>
           <th>Event</th>
           <th>Baseline PB</th>
-          <th>Latest result</th>
           <th>Current PB</th>
-          <th>Δ latest vs PB</th>
           <th>Δ PB vs baseline</th>
           <th>Source</th>
         </tr>
       `;
 
-      body.innerHTML = rowsOut.map(r => `
+      document.getElementById("tableBody").innerHTML = rowsOut.map(r => `
         <tr>
           <td>${escapeHtml(canonicalEventDisplay(r.event))}</td>
           <td>${escapeHtml(r.baseline)}</td>
-          <td>
-            ${escapeHtml(r.latest)}
-            ${r.latestMeet ? `<div class="small">${escapeHtml(r.latestMeet)} · ${escapeHtml(r.latestDate)}</div>` : ""}
-          </td>
           <td>${escapeHtml(r.pb)}</td>
-          <td class="${r.deltaLatestVsPb == null ? "" : r.deltaLatestVsPb <= 0 ? "good" : "bad"}">
-            ${r.deltaLatestVsPb == null ? "—" : secondsToDelta(r.deltaLatestVsPb)}
-          </td>
-          <td class="${r.deltaPbVsBaseline == null ? "" : r.deltaPbVsBaseline <= 0 ? "good" : "bad"}">
-            ${r.deltaPbVsBaseline == null ? "—" : secondsToDelta(r.deltaPbVsBaseline)}
-          </td>
-          <td>${escapeHtml(r.baselineSource)}</td>
+          <td class="${r.delta <= 0 ? "good" : "bad"}">${secondsToDelta(r.delta)}</td>
+          <td>${escapeHtml(r.source)}</td>
         </tr>
       `).join("");
 
       renderGraphs(swimmerRows);
     }
 
-    async function init(){
-      try {
-        const [masterRowsRaw, jackAllCsv, jackPbsCsv] = await Promise.all([
-          loadRows(),
-          fetchOptionalCsv("data/jack_all_results.csv"),
-          fetchOptionalCsv("data/jack_pbs.csv")
-        ]);
+    loadRows().then(allRows => {
+      const swimmerRows = swimmerRowsValid(
+        allRows.filter(r => normalize(r.canonical_swimmer) === normalize(swimmerNameParam))
+      );
 
-        const masterRows = swimmerRowsValid(masterRowsRaw);
-        const jackAllRows = swimmerRowsValid(jackAllCsv.map(mapJackRow));
-        const jackPbsRows = swimmerRowsValid(jackPbsCsv.map(mapJackRow));
+      const displayName = swimmerRows.length
+        ? displaySwimmerName(swimmerRows[0].canonical_swimmer)
+        : displaySwimmerName(decodeURIComponent(swimmerNameParam));
 
-        const masterMatches = masterRows.filter(r => normalize(r.canonical_swimmer) === normalize(swimmerNameParam));
-        const isJack = isJackName(swimmerNameParam);
+      document.getElementById("swimmerName").textContent = displayName || "Swimmer";
 
-        const swimmerRows = isJack && jackAllRows.length ? jackAllRows : masterMatches;
+      const clubs = uniqueSorted(swimmerRows.map(r => r.club));
+      const seasons = uniqueSorted(swimmerRows.map(r => r.season));
 
-        const displayName = swimmerRows.length
-          ? displaySwimmerName(swimmerRows[0].canonical_swimmer)
-          : displaySwimmerName(decodeURIComponent(swimmerNameParam));
+      document.getElementById("swimmerMeta").innerHTML = `
+        ${escapeHtml(clubs[0] || "Unknown club")}
+        ${isJackName(swimmerNameParam) ? ` <span class="badge" style="margin-left:8px">Special profile</span>` : ""}
+        ${seasons.length ? `<span class="small" style="display:block;margin-top:6px">${escapeHtml(seasons.join(", "))}</span>` : ""}
+      `;
 
-        document.getElementById("swimmerName").textContent = displayName || "Swimmer";
+      document.getElementById("kpiRaces").textContent = swimmerRows.length;
+      document.getElementById("kpiEvents").textContent = uniqueSorted(swimmerRows.map(r => canonicalEventKey(r.event))).length;
+      document.getElementById("kpiPBs").textContent = bestRowsByEvent(swimmerRows).length;
 
-        const clubs = uniqueSorted(swimmerRows.map(r => r.club));
-        const seasons = uniqueSorted(swimmerRows.map(r => r.season));
-        document.getElementById("swimmerMeta").innerHTML = `
-          ${escapeHtml(clubs[0] || "Unknown club")}
-          ${isJack ? ` <span class="badge" style="margin-left:8px">Special profile</span>` : ""}
-          ${seasons.length ? `<span class="small" style="display:block;margin-top:6px">${escapeHtml(seasons.join(", "))}</span>` : ""}
-        `;
+      const bestBtn = document.getElementById("bestBtn");
+      const resultsBtn = document.getElementById("resultsBtn");
+      const progressBtn = document.getElementById("progressBtn");
 
-        document.getElementById("kpiRaces").textContent = swimmerRows.length;
-        document.getElementById("kpiEvents").textContent = uniqueSorted(swimmerRows.map(r => canonicalEventKey(r.event))).length;
-        document.getElementById("kpiPBs").textContent = isJack && jackPbsRows.length
-          ? bestRowsByEventCourse(jackPbsRows).length
-          : bestRowsByEventCourse(swimmerRows).length;
+      function setMode(mode){
+        [bestBtn, resultsBtn, progressBtn].forEach(btn => btn.classList.remove("active"));
+        if (mode === "best") bestBtn.classList.add("active");
+        if (mode === "results") resultsBtn.classList.add("active");
+        if (mode === "progress") progressBtn.classList.add("active");
 
-        let mode = "best";
-
-        const bestBtn = document.getElementById("bestBtn");
-        const resultsBtn = document.getElementById("resultsBtn");
-        const progressBtn = document.getElementById("progressBtn");
-
-        function setMode(next){
-          mode = next;
-          [bestBtn, resultsBtn, progressBtn].forEach(btn => btn.classList.remove("active"));
-          if (mode === "best") bestBtn.classList.add("active");
-          if (mode === "results") resultsBtn.classList.add("active");
-          if (mode === "progress") progressBtn.classList.add("active");
-
-          if (mode === "best") renderBest(masterRows, swimmerRows, swimmerRows[0]?.canonical_swimmer || swimmerNameParam, isJack, jackPbsRows);
-          if (mode === "results") renderResults(swimmerRows);
-          if (mode === "progress") renderProgress(swimmerRows, isJack);
-        }
-
-        bestBtn.addEventListener("click", () => setMode("best"));
-        resultsBtn.addEventListener("click", () => setMode("results"));
-        progressBtn.addEventListener("click", () => setMode("progress"));
-
-        setMode("best");
-      } catch (err) {
-        console.error(err);
-        document.getElementById("swimmerMeta").textContent = "Failed to load swimmer data";
-        document.getElementById("tableHead").innerHTML = `<tr><th>Status</th></tr>`;
-        document.getElementById("tableBody").innerHTML = `<tr><td class="empty">Could not load the CSV files.</td></tr>`;
+        if (mode === "best") renderBest(swimmerRows);
+        if (mode === "results") renderResults(swimmerRows);
+        if (mode === "progress") renderProgress(swimmerRows);
       }
-    }
 
-    init();
+      bestBtn.addEventListener("click", () => setMode("best"));
+      resultsBtn.addEventListener("click", () => setMode("results"));
+      progressBtn.addEventListener("click", () => setMode("progress"));
+
+      setMode("best");
+    }).catch(err => {
+      console.error(err);
+      document.getElementById("swimmerMeta").textContent = "Failed to load swimmer data";
+      document.getElementById("tableHead").innerHTML = `<tr><th>Status</th></tr>`;
+      document.getElementById("tableBody").innerHTML = `<tr><td class="empty">Could not load the CSV files.</td></tr>`;
+    });
   </script>
 </body>
 </html>

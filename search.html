@@ -5,6 +5,47 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Search Results</title>
   <script src="data/app.js"></script>
+  <style>
+    .searchLayout{
+      display:grid;
+      grid-template-columns:minmax(220px,260px) minmax(0,1fr);
+      gap:16px;
+      align-items:start;
+    }
+    .searchSidebar{
+      position:sticky;
+      top:12px;
+      align-self:start;
+    }
+    .searchSidebar .nav{
+      margin-bottom:10px;
+    }
+    .searchSidebar button,
+    .searchSidebar input,
+    .searchSidebar select{
+      margin-bottom:10px;
+    }
+    .searchTableCard .tableWrap{
+      max-height:75vh;
+    }
+    .searchMeta{
+      color:var(--muted);
+      font-size:13px;
+      margin-top:-6px;
+      margin-bottom:12px;
+    }
+    @media (max-width:900px){
+      .searchLayout{
+        grid-template-columns:1fr;
+      }
+      .searchSidebar{
+        position:static;
+      }
+      .searchTableCard .tableWrap{
+        max-height:none;
+      }
+    }
+  </style>
 </head>
 <body>
   <div class="wrap">
@@ -15,9 +56,10 @@
     </div>
 
     <h1>Search results</h1>
+    <div class="searchMeta">Filter by swimmer, club, province, stroke, or event.</div>
 
-    <div class="grid sidebar">
-      <div class="card panel stack" id="filterCard">
+    <div class="searchLayout">
+      <div class="card panel stack searchSidebar" id="filterCard">
         <div class="nav" style="margin:0">
           <a href="#" id="allBtn">All results</a>
           <a href="#" id="rankBtn" class="active">Rankings</a>
@@ -33,7 +75,7 @@
         <button id="clearBtn">Clear filters</button>
       </div>
 
-      <div class="card panel">
+      <div class="card panel searchTableCard">
         <h2 id="sectionTitle">Rankings</h2>
         <div class="tableWrap">
           <table>
@@ -139,13 +181,12 @@
         section.textContent = `All results (${filtered.length})`;
         head.innerHTML = `
           <tr>
-            <th>Place</th>
-            <th>Date</th>
-            <th>Event</th>
             <th>Swimmer</th>
-            <th>Club</th>
-            <th>Meet</th>
+            <th>Event</th>
             <th>Time</th>
+            <th>Meet</th>
+            <th>Date</th>
+            <th>Club</th>
           </tr>
         `;
 
@@ -157,19 +198,18 @@
 
         body.innerHTML = sorted.map(r => `
           <tr>
-            <td data-label="Place">${r.rank || ""}</td>
-            <td data-label="Date">${escapeHtml(r.date)}</td>
-            <td data-label="Event">${escapeHtml(canonicalEventDisplay(r.event))}</td>
             <td data-label="Swimmer">
               <a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">
                 ${escapeHtml(displaySwimmerName(r.canonical_swimmer))}
               </a>
             </td>
-            <td data-label="Club">${escapeHtml(r.club)}</td>
-            <td data-label="Meet">${escapeHtml(r.meet)}<div class="small">${escapeHtml(r.venue)}</div></td>
+            <td data-label="Event">${escapeHtml(canonicalEventDisplay(r.event))}</td>
             <td data-label="Time">${escapeHtml(r.time)}</td>
+            <td data-label="Meet">${escapeHtml(r.meet)}<div class="small">${escapeHtml(r.venue)}</div></td>
+            <td data-label="Date">${escapeHtml(r.date)}</td>
+            <td data-label="Club">${escapeHtml(r.club)}</td>
           </tr>
-        `).join("") || `<tr><td colspan="7" class="empty">No data found.</td></tr>`;
+        `).join("") || `<tr><td colspan="6" class="empty">No data found.</td></tr>`;
       } else {
         const ranked = bestRowsBySwimmer(filtered);
         section.textContent = `Rankings (${ranked.length})`;
@@ -179,9 +219,9 @@
             <th>Swimmer</th>
             <th>Club</th>
             <th>Event</th>
+            <th>Time</th>
             <th>Meet</th>
             <th>Date</th>
-            <th>Time</th>
           </tr>
         `;
 
@@ -195,9 +235,9 @@
             </td>
             <td data-label="Club">${escapeHtml(r.club)}</td>
             <td data-label="Event">${escapeHtml(canonicalEventDisplay(r.event))}</td>
+            <td data-label="Time">${escapeHtml(r.time)}</td>
             <td data-label="Meet">${escapeHtml(r.meet)}<div class="small">${escapeHtml(r.venue)}</div></td>
             <td data-label="Date">${escapeHtml(r.date)}</td>
-            <td data-label="Time">${escapeHtml(r.time)}</td>
           </tr>
         `).join("") || `<tr><td colspan="7" class="empty">No data found.</td></tr>`;
       }

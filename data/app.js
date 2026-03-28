@@ -46,7 +46,7 @@ h3{margin:0 0 8px;font-size:16px}
 .panel{padding:14px}
 .stack{display:grid;gap:12px}
 .grid{display:grid;gap:14px}
-.grid.sidebar{grid-template-columns:minmax(260px,320px) minmax(0,1fr)}
+.grid.sidebar{grid-template-columns:minmax(220px,280px) minmax(0,1fr)}
 input,select,button{
   width:100%;
   padding:12px 14px;
@@ -273,7 +273,9 @@ function canonicalEventKey(event){
 }
 
 function hasValidEvent(event){
-  return Boolean(canonicalEventKey(event));
+  const e = String(event || "").trim();
+  if (!e) return false;
+  return Boolean(canonicalEventKey(e)) || /^Event\\s+\\d+$/i.test(e);
 }
 
 function meetId(row){
@@ -304,7 +306,7 @@ function eventDisplay(event){
 
 function canonicalEventDisplay(event){
   const key = canonicalEventKey(event);
-  const m = key.match(/^(\d+)\s+(back|free|fly|breast|im)$/);
+  const m = key.match(/^(\d+)\\s+(back|free|fly|breast|im)$/);
   if(!m) return eventDisplay(event || "");
 
   const strokeMap = {
@@ -342,8 +344,8 @@ function mountAutocomplete(datalistId, inputId, rows){
 }
 
 function parseCsv(text){
-  const clean = text.replace(/^\uFEFF/,'').replace(/\r/g,'');
-  const lines = clean.split('\n').filter(x => x.trim() !== '');
+  const clean = text.replace(/^\\uFEFF/,'').replace(/\\r/g,'');
+  const lines = clean.split('\\n').filter(x => x.trim() !== '');
   if(!lines.length) return [];
   const headers = parseCsvLine(lines[0]).map(h => h.trim());
 
@@ -353,10 +355,10 @@ function parseCsv(text){
     const obj = {};
     headers.forEach((h,i)=> obj[h] = (vals[i] ?? '').trim());
 
-    const event = pick(obj, ["Event","event","event_name"]);
+    let event = pick(obj, ["Event","event","event_name"]);
     const stroke = pick(obj, ["Stroke","stroke"]);
-    const canonical = pick(obj, ["Canonical_Swimmer","Canonical","canonical_swimmer"]);
     const swimmerRaw = pick(obj, ["Swimmer_Raw","Swimmer","swimmer_raw","name"]);
+    const canonical = pick(obj, ["Canonical_Swimmer","Canonical","canonical_swimmer"]) || swimmerRaw;
     const club = pick(obj, ["Club","club"]);
     const meet = pick(obj, ["Meet","meet","meet_name"]);
     const venue = pick(obj, ["Venue","venue","city"]);
@@ -367,7 +369,16 @@ function parseCsv(text){
     const date = pick(obj, ["Date","date"]) || dateIso;
     const time = pick(obj, ["Time","time","swimtime"]);
     const rank = Number(pick(obj, ["Rank","rank","place"]) || 0);
-    const distance = Number(pick(obj, ["Distance_m","Distance","distance_m","distance"]) || (event.match(/\d+/)?.[0] || 0));
+
+    if (!event || !event.trim()) {
+      const fallbackEventId = pick(obj, ["event_id","Event_ID"]);
+      if (fallbackEventId) event = `Event ${fallbackEventId}`;
+    }
+
+    const distance = Number(
+      pick(obj, ["Distance_m","Distance","distance_m","distance"]) ||
+      ((String(event || "").match(/\\d+/) || [0])[0])
+    );
 
     return {
       season,
@@ -381,7 +392,7 @@ function parseCsv(text){
       date,
       dateIso,
       swimmer_raw: swimmerRaw,
-      canonical_swimmer: canonical || swimmerRaw,
+      canonical_swimmer: canonical,
       club,
       time,
       rank,

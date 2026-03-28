@@ -46,7 +46,7 @@ h3{margin:0 0 8px;font-size:16px}
 .panel{padding:14px}
 .stack{display:grid;gap:12px}
 .grid{display:grid;gap:14px}
-.grid.sidebar{grid-template-columns:320px 1fr}
+.grid.sidebar{grid-template-columns:minmax(260px,320px) minmax(0,1fr)}
 input,select,button{
   width:100%;
   padding:12px 14px;
@@ -217,6 +217,130 @@ function pick(obj, keys){
   return "";
 }
 
+function timeToSeconds(t){
+  if(!t) return Infinity;
+  const p = String(t).trim().split(':');
+  if(p.length===2) return Number(p[0])*60 + Number(p[1]);
+  if(p.length===3) return Number(p[0])*3600 + Number(p[1])*60 + Number(p[2]);
+  return Number(t);
+}
+
+function normalize(s){
+  return String(s||'')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-z0-9 ]/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+
+function uniqueSorted(items){
+  return [...new Set(items.filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'es'));
+}
+
+function eventSort(a,b,rows){
+  return ((rows.find(r=>r.event===a)?.distance||0) - (rows.find(r=>r.event===b)?.distance||0)) || a.localeCompare(b,'es');
+}
+
+function escapeHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function displaySwimmerName(name){
+  if(!name) return '';
+  if(name.includes(',')){
+    const p = name.split(',');
+    return `${p[1].trim()} ${p[0].trim()}`.replace(/\s+/g,' ');
+  }
+  return name;
+}
+
+function isJackName(name){
+  const n = normalize(name);
+  return n.includes('jack') && n.includes('simeonov');
+}
+
+function canonicalEventKey(event){
+  const e = normalize(event), d = (e.match(/\d+/)||[''])[0];
+  if(!e || !d) return "";
+  if(e.includes('espalda')||e.includes('back')) return `${d} back`;
+  if(e.includes('libre')||e.includes('free')) return `${d} free`;
+  if(e.includes('mariposa')||e.includes('fly')) return `${d} fly`;
+  if(e.includes('braza')||e.includes('breast')) return `${d} breast`;
+  if(e.includes('estilo')||e.includes('medley')||e.includes('im')) return `${d} im`;
+  return `${d} ${e}`.trim();
+}
+
+function hasValidEvent(event){
+  return Boolean(canonicalEventKey(event));
+}
+
+function meetId(row){
+  return normalize([row.meet,row.venue,row.dateIso||row.date].join('|')).replace(/ /g,'-');
+}
+
+function eventId(row){
+  return normalize([row.meet,row.venue,row.dateIso||row.date,row.event].join('|')).replace(/ /g,'-');
+}
+
+function strokeEnglish(strokeOrEvent){
+  const s = String(strokeOrEvent || '');
+  const n = normalize(s);
+
+  if(n.includes('espalda') || n.includes('back')) return 'Backstroke';
+  if(n.includes('libre') || n.includes('free')) return 'Freestyle';
+  if(n.includes('mariposa') || n.includes('fly')) return 'Butterfly';
+  if(n.includes('braza') || n.includes('breast')) return 'Breaststroke';
+  if(n.includes('estilos') || n.includes('estilo') || n.includes('medley') || n.includes('im')) return 'Medley';
+
+  return '';
+}
+
+function eventDisplay(event){
+  const en = strokeEnglish(event);
+  return en ? `${event} / ${en}` : event;
+}
+
+function canonicalEventDisplay(event){
+  const key = canonicalEventKey(event);
+  const m = key.match(/^(\d+)\s+(back|free|fly|breast|im)$/);
+  if(!m) return eventDisplay(event || "");
+
+  const strokeMap = {
+    back: "Backstroke",
+    free: "Freestyle",
+    fly: "Butterfly",
+    breast: "Breaststroke",
+    im: "Medley"
+  };
+
+  return `${m[1]}m ${strokeMap[m[2]]}`;
+}
+
+function buildAutocompleteOptions(rows){
+  const swimmers = uniqueSorted(rows.map(r => displaySwimmerName(r.canonical_swimmer)));
+  const clubs = uniqueSorted(rows.map(r => r.club));
+  return uniqueSorted([...swimmers, ...clubs]);
+}
+
+function mountAutocomplete(datalistId, inputId, rows){
+  let datalist = document.getElementById(datalistId);
+
+  if(!datalist){
+    datalist = document.createElement('datalist');
+    datalist.id = datalistId;
+    document.body.appendChild(datalist);
+  }
+
+  const input = document.getElementById(inputId);
+  if(input) input.setAttribute('list', datalistId);
+
+  datalist.innerHTML = buildAutocompleteOptions(rows)
+    .map(v => `<option value="${escapeHtml(v)}"></option>`)
+    .join('');
+}
+
 function parseCsv(text){
   const clean = text.replace(/^\uFEFF/,'').replace(/\r/g,'');
   const lines = clean.split('\n').filter(x => x.trim() !== '');
@@ -263,20 +387,19 @@ function parseCsv(text){
       rank,
       timeSeconds: timeToSeconds(time)
     };
-  }).filter(r => r && r.canonical_swimmer && r.club && r.time && r.meet);
+  }).filter(r =>
+    r &&
+    hasValidEvent(r.event) &&
+    r.canonical_swimmer &&
+    r.club &&
+    r.time &&
+    r.meet
+  );
 }
 
 async function loadRows(){
   const text = await fetch(DATA_URL, {cache:'no-store'}).then(r=>r.text());
   return parseCsv(text);
-}
-
-function timeToSeconds(t){
-  if(!t) return Infinity;
-  const p = String(t).trim().split(':');
-  if(p.length===2) return Number(p[0])*60 + Number(p[1]);
-  if(p.length===3) return Number(p[0])*3600 + Number(p[1])*60 + Number(p[2]);
-  return Number(t);
 }
 
 function secondsToDelta(secs){
@@ -286,60 +409,6 @@ function secondsToDelta(secs){
   const mins = Math.floor(val/60);
   const rem = (val-mins*60).toFixed(2).padStart(5,'0');
   return mins ? `${sign}${mins}:${rem}` : `${sign}${rem}`;
-}
-
-function normalize(s){
-  return String(s||'')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g,'')
-    .replace(/[^a-z0-9 ]/g,' ')
-    .replace(/\s+/g,' ')
-    .trim();
-}
-
-function uniqueSorted(items){
-  return [...new Set(items.filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
-}
-
-function eventSort(a,b,rows){
-  return ((rows.find(r=>r.event===a)?.distance||0) - (rows.find(r=>r.event===b)?.distance||0)) || a.localeCompare(b,'es');
-}
-
-function escapeHtml(s){
-  return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-}
-
-function displaySwimmerName(name){
-  if(!name) return '';
-  if(name.includes(',')){
-    const p = name.split(',');
-    return `${p[1].trim()} ${p[0].trim()}`.replace(/\s+/g,' ');
-  }
-  return name;
-}
-
-function isJackName(name){
-  const n = normalize(name);
-  return n.includes('jack') && n.includes('simeonov');
-}
-
-function canonicalEventKey(event){
-  const e = normalize(event), d = (e.match(/\d+/)||[''])[0];
-  if(e.includes('espalda')||e.includes('back')) return `${d} back`;
-  if(e.includes('libre')||e.includes('free')) return `${d} free`;
-  if(e.includes('mariposa')||e.includes('fly')) return `${d} fly`;
-  if(e.includes('braza')||e.includes('breast')) return `${d} breast`;
-  if(e.includes('estilo')||e.includes('medley')||e.includes('im')) return `${d} im`;
-  return `${d} ${e}`.trim();
-}
-
-function meetId(row){
-  return normalize([row.meet,row.venue,row.dateIso||row.date].join('|')).replace(/ /g,'-');
-}
-
-function eventId(row){
-  return normalize([row.meet,row.venue,row.dateIso||row.date,row.event].join('|')).replace(/ /g,'-');
 }
 
 function groupMeets(rows){
@@ -368,61 +437,4 @@ function groupMeets(rows){
     swimmerCount: uniqueSorted(m.rows.map(r => r.canonical_swimmer)).length,
     complete: true
   })).sort((a,b)=>String(b.dateIso).localeCompare(String(a.dateIso))||a.meet.localeCompare(b.meet,'es'));
-}
-
-function strokeEnglish(strokeOrEvent){
-  const s = String(strokeOrEvent || '');
-  const n = normalize(s);
-
-  if(n.includes('espalda') || n.includes('back')) return 'Backstroke';
-  if(n.includes('libre') || n.includes('free')) return 'Freestyle';
-  if(n.includes('mariposa') || n.includes('fly')) return 'Butterfly';
-  if(n.includes('braza') || n.includes('breast')) return 'Breaststroke';
-  if(n.includes('estilos') || n.includes('estilo') || n.includes('medley') || n.includes('im')) return 'Medley';
-
-  return '';
-}
-
-function eventDisplay(event){
-  const en = strokeEnglish(event);
-  return en ? `${event} / ${en}` : event;
-}
-
-function canonicalEventDisplay(event){
-  const key = canonicalEventKey(event);
-  const m = key.match(/^(\d+)\s+(back|free|fly|breast|im)$/);
-  if(!m) return eventDisplay(event);
-
-  const strokeMap = {
-    back: "Backstroke",
-    free: "Freestyle",
-    fly: "Butterfly",
-    breast: "Breaststroke",
-    im: "Medley"
-  };
-
-  return `${m[1]}m ${strokeMap[m[2]]}`;
-}
-
-function buildAutocompleteOptions(rows){
-  const swimmers = uniqueSorted(rows.map(r => displaySwimmerName(r.canonical_swimmer)));
-  const clubs = uniqueSorted(rows.map(r => r.club));
-  return uniqueSorted([...swimmers, ...clubs]);
-}
-
-function mountAutocomplete(datalistId, inputId, rows){
-  let datalist = document.getElementById(datalistId);
-
-  if(!datalist){
-    datalist = document.createElement('datalist');
-    datalist.id = datalistId;
-    document.body.appendChild(datalist);
-  }
-
-  const input = document.getElementById(inputId);
-  if(input) input.setAttribute('list', datalistId);
-
-  datalist.innerHTML = buildAutocompleteOptions(rows)
-    .map(v => `<option value="${escapeHtml(v)}"></option>`)
-    .join('');
 }

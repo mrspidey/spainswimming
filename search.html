@@ -17,10 +17,10 @@
     <h1>Search results</h1>
 
     <div class="grid sidebar">
-      <div class="card panel stack">
+      <div class="card panel stack" id="filterCard">
         <div class="nav" style="margin:0">
-          <a href="#" id="allBtn" class="active">All results</a>
-          <a href="#" id="rankBtn">Rankings</a>
+          <a href="#" id="allBtn">All results</a>
+          <a href="#" id="rankBtn" class="active">Rankings</a>
         </div>
 
         <input id="searchInput" type="text" placeholder="Search swimmer or club" />
@@ -34,7 +34,7 @@
       </div>
 
       <div class="card panel">
-        <h2 id="sectionTitle">All results</h2>
+        <h2 id="sectionTitle">Rankings</h2>
         <div class="tableWrap">
           <table>
             <thead id="tableHead"></thead>
@@ -49,7 +49,7 @@
     injectStyles();
 
     let rows = [];
-    let mode = "all";
+    let mode = "rank";
 
     function buildEventOptions(rows){
       const map = new Map();
@@ -60,7 +60,11 @@
       });
 
       return [...map.entries()]
-        .sort((a,b) => a[1].localeCompare(b[1], "es"))
+        .sort((a,b) => {
+          const da = Number((a[0].match(/\d+/)||["0"])[0]);
+          const db = Number((b[0].match(/\d+/)||["0"])[0]);
+          return da - db || a[1].localeCompare(b[1], "es");
+        })
         .map(([value, label]) => ({ value, label }));
     }
 
@@ -109,7 +113,9 @@
       const by = new Map();
 
       rowsIn.forEach(r => {
-        const key = normalize([r.canonical_swimmer, canonicalEventKey(r.event)].join("|"));
+        const eventKey = canonicalEventKey(r.event);
+        if (!eventKey) return;
+        const key = normalize([r.canonical_swimmer, eventKey].join("|"));
         const ex = by.get(key);
         if (!ex || r.timeSeconds < ex.timeSeconds) by.set(key, r);
       });

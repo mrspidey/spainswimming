@@ -89,14 +89,15 @@
       const groupedByEvent = new Map();
       meetRows.forEach(r => {
         const key = canonicalEventKey(r.event);
+        if (!key) return;
         if (!groupedByEvent.has(key)) groupedByEvent.set(key, []);
         groupedByEvent.get(key).push(r);
       });
 
-      const eventGroups = [...groupedByEvent.values()].sort((a,b) => {
-        const ea = canonicalEventKey(a[0].event);
-        const eb = canonicalEventKey(b[0].event);
-        return ea.localeCompare(eb, "es");
+      const eventKeys = [...groupedByEvent.keys()].sort((a,b) => {
+        const da = Number((a.match(/\d+/)||["0"])[0]);
+        const db = Number((b.match(/\d+/)||["0"])[0]);
+        return da - db || a.localeCompare(b, "es");
       });
 
       document.getElementById("sectionTitle").textContent = `Meet results (${meetRows.length})`;
@@ -110,9 +111,9 @@
         </tr>
       `;
 
-      document.getElementById("tableBody").innerHTML = eventGroups.map(group => {
-        const sorted = [...group].sort((a,b) =>
-          a.rank - b.rank || a.timeSeconds - b.timeSeconds
+      document.getElementById("tableBody").innerHTML = eventKeys.map(key => {
+        const sorted = [...groupedByEvent.get(key)].sort((a,b) =>
+          (a.rank || 9999) - (b.rank || 9999) || a.timeSeconds - b.timeSeconds
         );
 
         return sorted.map((r, idx) => `

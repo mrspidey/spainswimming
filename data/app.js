@@ -46,7 +46,7 @@ h3{margin:0 0 8px;font-size:16px}
 .panel{padding:14px}
 .stack{display:grid;gap:12px}
 .grid{display:grid;gap:14px}
-.grid.sidebar{grid-template-columns:minmax(220px,280px) minmax(0,1fr)}
+.grid.sidebar{grid-template-columns:minmax(220px,260px) minmax(0,1fr)}
 input,select,button{
   width:100%;
   padding:12px 14px;
@@ -275,7 +275,7 @@ function canonicalEventKey(event){
 function hasValidEvent(event){
   const e = String(event || "").trim();
   if (!e) return false;
-  return Boolean(canonicalEventKey(e)) || /^Event\\s+\\d+$/i.test(e);
+  return Boolean(canonicalEventKey(e)) || /^Event\s+\d+$/i.test(e);
 }
 
 function meetId(row){
@@ -306,9 +306,8 @@ function eventDisplay(event){
 
 function canonicalEventDisplay(event){
   const key = canonicalEventKey(event);
-  const m = key.match(/^(\d+)\\s+(back|free|fly|breast|im)$/);
+  const m = key.match(/^(\d+)\s+(back|free|fly|breast|im)$/);
   if(!m) return eventDisplay(event || "");
-
   const strokeMap = {
     back: "Backstroke",
     free: "Freestyle",
@@ -316,7 +315,6 @@ function canonicalEventDisplay(event){
     breast: "Breaststroke",
     im: "Medley"
   };
-
   return `${m[1]}m ${strokeMap[m[2]]}`;
 }
 
@@ -344,8 +342,8 @@ function mountAutocomplete(datalistId, inputId, rows){
 }
 
 function parseCsv(text){
-  const clean = text.replace(/^\\uFEFF/,'').replace(/\\r/g,'');
-  const lines = clean.split('\\n').filter(x => x.trim() !== '');
+  const clean = text.replace(/^\uFEFF/,'').replace(/\r/g,'');
+  const lines = clean.split('\n').filter(x => x.trim() !== '');
   if(!lines.length) return [];
   const headers = parseCsvLine(lines[0]).map(h => h.trim());
 
@@ -377,7 +375,7 @@ function parseCsv(text){
 
     const distance = Number(
       pick(obj, ["Distance_m","Distance","distance_m","distance"]) ||
-      ((String(event || "").match(/\\d+/) || [0])[0])
+      ((String(event || "").match(/\d+/) || [0])[0])
     );
 
     return {

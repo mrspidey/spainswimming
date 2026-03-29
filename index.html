@@ -67,74 +67,12 @@
       return s;
     }
 
-    function preferLongest(values){
-      const arr = [...new Set(values.filter(Boolean))];
-      if (!arr.length) return "";
-      arr.sort((a,b) => b.length - a.length || a.localeCompare(b, "es"));
-      return arr[0];
-    }
-
-    function groupMeetRows(rows){
-      const firstPass = new Map();
-
-      rows.forEach(r => {
-        const key = normalize([
-          r.meet,
-          r.dateIso || r.date
-        ].join("|"));
-
-        if (!firstPass.has(key)) firstPass.set(key, []);
-        firstPass.get(key).push(r);
-      });
-
-      const grouped = [...firstPass.values()].map(group => {
-        const first = group[0];
-        return {
-          id: meetId(first),
-          meet: preferLongest(group.map(x => x.meet)),
-          venue: preferLongest(group.map(x => x.venue)),
-          province: preferLongest(group.map(x => x.province)),
-          dateIso: preferLongest(group.map(x => x.dateIso || x.date)),
-          rows: group,
-          swimmerCount: uniqueSorted(group.map(x => x.canonical_swimmer)).length,
-          eventCount: uniqueSorted(group.map(x => canonicalEventKey(x.event))).length
-        };
-      });
-
-      const secondPass = new Map();
-
-      grouped.forEach(m => {
-        const mergeKey = normalize([
-          m.venue,
-          m.dateIso,
-          m.eventCount,
-          m.swimmerCount
-        ].join("|"));
-
-        if (!secondPass.has(mergeKey)) secondPass.set(mergeKey, []);
-        secondPass.get(mergeKey).push(m);
-      });
-
-      return [...secondPass.values()].map(cluster => {
-        if (cluster.length === 1) return cluster[0];
-
-        const richest = [...cluster].sort((a,b) =>
-          b.meet.length - a.meet.length || a.meet.localeCompare(b.meet, "es")
-        )[0];
-
-        return richest;
-      }).sort((a,b) =>
-        String(b.dateIso).localeCompare(String(a.dateIso)) ||
-        a.meet.localeCompare(b.meet, "es")
-      );
-    }
-
     function renderMeetList(allRows){
       document.getElementById("kpiSwims").textContent = allRows.length;
       document.getElementById("kpiAthletes").textContent =
         uniqueSorted(allRows.map(r => r.canonical_swimmer)).length;
 
-      const grouped = groupMeetRows(allRows);
+      const grouped = groupMeets(allRows);
       document.getElementById("kpiMeets").textContent = grouped.length;
 
       const provinces = uniqueSorted(grouped.map(x => x.province).filter(Boolean));
@@ -152,33 +90,24 @@
         const p = provinceFilter.value;
 
         const filtered = grouped.filter(m => {
-          const hay = normalize([m.meet, m.venue, m.province].join(" "));
-          if (q && !hay.includes(q)) return false;
-          if (p && m.province !== p) return false;
-          return true;
+          const text = normalize(`${m.meet} ${m.venue}`);
+          return (!q || text.includes(q)) && (!p || m.province === p);
         });
 
         meetCount.textContent = `${filtered.length} meet${filtered.length === 1 ? "" : "s"}`;
 
-        if (!filtered.length) {
-          meetList.innerHTML = `<div class="empty">No meets found.</div>`;
-          return;
-        }
-
         meetList.innerHTML = filtered.map(m => `
           <div class="listCard">
-            <h3>${escapeHtml(m.meet)}</h3>
-            <div class="muted">${escapeHtml(m.venue)} · ${escapeHtml(humanDate(m.dateIso))}</div>
-            <div style="margin-top:10px">
+            <div style="font-weight:800;font-size:18px;margin-bottom:6px">${escapeHtml(m.meet)}</div>
+            <div class="muted" style="margin-bottom:10px">${escapeHtml(m.venue)} · ${humanDate(m.dateIso)}</div>
+            <div style="margin-bottom:12px">
               <span class="badge">${escapeHtml(m.province || "Spain")}</span>
               <span class="badge">${m.eventCount} events</span>
               <span class="badge">${m.swimmerCount} swimmers</span>
             </div>
-            <div style="margin-top:12px">
-              <a href="meet.html?id=${encodeURIComponent(m.id)}">View results →</a>
-            </div>
+            <a class="primaryBtn" href="meet.html?id=${encodeURIComponent(m.id)}">View results</a>
           </div>
-        `).join("");
+        `).join("") || `<div class="empty">No meets found.</div>`;
       }
 
       meetSearch.addEventListener("input", draw);
@@ -190,7 +119,7 @@
       .then(renderMeetList)
       .catch(err => {
         console.error(err);
-        document.body.insertAdjacentHTML("beforeend", `<div class="wrap"><div class="card panel">Could not load the CSV file.</div></div>`);
+        document.getElementById("meetList").innerHTML = `<div class="empty">Could not load the CSV file.</div>`;
       });
   </script>
 </body>

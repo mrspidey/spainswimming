@@ -6,46 +6,20 @@
   <title>Swimmer Profile</title>
   <script src="data/app.js"></script>
   <style>
-    .topnav{
-      display:flex;
-      gap:10px;
-      margin-bottom:18px;
+    .topnav{display:flex;gap:10px;margin-bottom:18px}
+    .navbtn,.segbtn{
+      display:inline-flex;align-items:center;justify-content:center;
+      border-radius:12px;border:1px solid var(--line);background:#fff;color:var(--text);
+      padding:10px 16px;font-weight:600;text-decoration:none;cursor:pointer;transition:.15s ease
     }
-    .navbtn, .segbtn{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      border-radius:12px;
-      border:1px solid var(--line);
-      background:#fff;
-      color:var(--text);
-      padding:10px 16px;
-      font-weight:600;
-      text-decoration:none;
-      cursor:pointer;
-      transition:.15s ease;
-    }
-    .navbtn:hover, .segbtn:hover{
-      background:#fff;
-      border-color:#c7def3;
-    }
-    .segbtn.active{
-      background:var(--blue-soft);
-      color:#075985;
-      border-color:#b8def8;
-    }
-    .back{
-      display:inline-block;
-      color:#2563EB;
-      text-decoration:none;
-      margin:6px 0 14px;
-      font-weight:500;
-    }
+    .navbtn:hover,.segbtn:hover{background:#fff;border-color:#c7def3}
+    .segbtn.active{background:var(--blue-soft);color:#075985;border-color:#b8def8}
+    .back{display:inline-block;color:#2563EB;text-decoration:none;margin:6px 0 14px;font-weight:500}
     .toolbar{padding:14px 16px}
     .seg{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
     .grid-graphs{
       display:grid;
-      grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));
+      grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));
       gap:14px;
       margin-top:14px;
     }
@@ -58,23 +32,16 @@
     .graph-title{font-weight:700;margin-bottom:8px}
     .graph-sub{color:var(--muted);font-size:12px;margin-bottom:10px}
     .svg-wrap{
-      width:100%;
-      height:150px;
-      border-radius:10px;
+      width:100%;height:150px;border-radius:10px;
       background:linear-gradient(180deg,#FBFEFF 0%, #F4FAFE 100%);
-      border:1px solid #E7F2FB;
-      padding:8px;
+      border:1px solid #E7F2FB;padding:8px;
     }
     .legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;color:var(--muted);font-size:12px}
     .dot{width:10px;height:10px;border-radius:999px;display:inline-block}
     .dot-line{background:#0EA5E9}
     .dot-best{background:#16A34A}
     .subtle{color:var(--muted);font-size:13px}
-    @media (max-width: 900px){
-      .hero{
-        flex-direction:column;
-      }
-    }
+    @media (max-width:900px){.hero{flex-direction:column}}
   </style>
 </head>
 <body>
@@ -138,6 +105,9 @@
     injectStyles();
 
     const swimmerNameParam = getParam("name") || "";
+    let allRows = [];
+    let swimmerRows = [];
+    let swimmerSpainRows = [];
 
     function swimmerRowsValid(rows){
       return rows.filter(r =>
@@ -185,7 +155,6 @@
       const width = 280;
       const height = 120;
       const pad = 14;
-
       const min = Math.min(...values);
       const max = Math.max(...values);
       const span = Math.max(max - min, 0.01);
@@ -239,11 +208,11 @@
       }).join("");
     }
 
-    function renderBest(swimmerRows){
-      document.getElementById("subtitle").textContent = "Best times for this swimmer across the current dataset.";
+    function renderBest(){
+      document.getElementById("subtitle").textContent = "Best Spain swim times for this swimmer. Provincial and national ranks are calculated across the Spain dataset.";
       document.getElementById("sectionTitle").textContent = "Best times";
 
-      const bests = bestRowsByEvent(swimmerRows);
+      const bests = bestRowsByEvent(swimmerSpainRows);
 
       document.getElementById("tableHead").innerHTML = `
         <tr>
@@ -256,25 +225,28 @@
         </tr>
       `;
 
-      document.getElementById("tableBody").innerHTML = bests.map(r => `
-        <tr>
-          <td>${escapeHtml(canonicalEventDisplay(r.event))}</td>
-          <td>${escapeHtml(r.time)}</td>
-          <td>${escapeHtml(r.meet)}<div class="small">${escapeHtml(r.venue || "")}</div></td>
-          <td>${escapeHtml(r.date)}</td>
-          <td>${r.rank || "—"}</td>
-          <td>—</td>
-        </tr>
-      `).join("") || `<tr><td colspan="6" class="empty">No data found.</td></tr>`;
+      document.getElementById("tableBody").innerHTML = bests.map(r => {
+        const ranks = getSpainRanksForEvent(allRows, r);
+        return `
+          <tr>
+            <td>${escapeHtml(canonicalEventDisplay(r.event))}</td>
+            <td>${escapeHtml(r.time)}</td>
+            <td>${escapeHtml(r.meet)}<div class="small">${escapeHtml(r.venue || "")}</div></td>
+            <td>${escapeHtml(r.date)}</td>
+            <td>${ranks.provincial || "—"}</td>
+            <td>${ranks.national || "—"}</td>
+          </tr>
+        `;
+      }).join("") || `<tr><td colspan="6" class="empty">No data found.</td></tr>`;
 
-      renderGraphs(swimmerRows);
+      renderGraphs(swimmerSpainRows);
     }
 
-    function renderResults(swimmerRows){
-      document.getElementById("subtitle").textContent = "All recorded races for this swimmer across the current dataset.";
+    function renderResults(){
+      document.getElementById("subtitle").textContent = "All recorded Spain swims for this swimmer.";
       document.getElementById("sectionTitle").textContent = "All results";
 
-      const sorted = [...swimmerRows].sort((a,b)=>
+      const sorted = [...swimmerSpainRows].sort((a,b)=>
         String(b.dateIso || "").localeCompare(String(a.dateIso || "")) ||
         (a.rank || 9999) - (b.rank || 9999) ||
         a.timeSeconds - b.timeSeconds
@@ -300,10 +272,10 @@
         </tr>
       `).join("") || `<tr><td colspan="5" class="empty">No data found.</td></tr>`;
 
-      renderGraphs(swimmerRows);
+      renderGraphs(swimmerSpainRows);
     }
 
-    function renderProgress(swimmerRows){
+    function renderProgress(){
       const isJack = isJackName(swimmerNameParam);
 
       document.getElementById("subtitle").textContent = isJack
@@ -314,7 +286,7 @@
       if (!isJack) {
         document.getElementById("tableHead").innerHTML = `<tr><th>Message</th></tr>`;
         document.getElementById("tableBody").innerHTML = `<tr><td class="empty">Baseline tracking is currently configured only for Jack Simeonov.</td></tr>`;
-        renderGraphs(swimmerRows);
+        renderGraphs(swimmerSpainRows);
         return;
       }
 
@@ -330,7 +302,6 @@
         const currentPb = bestByKey.get(base.key);
         const baselineSecs = timeToSeconds(base.time);
         const pbSecs = currentPb ? currentPb.timeSeconds : baselineSecs;
-
         return {
           event: base.label,
           baseline: base.time,
@@ -363,10 +334,12 @@
       renderGraphs(swimmerRows);
     }
 
-    loadRows().then(allRows => {
-      const swimmerRows = swimmerRowsValid(
+    loadRows().then(rows => {
+      allRows = rows;
+      swimmerRows = swimmerRowsValid(
         allRows.filter(r => normalize(r.canonical_swimmer) === normalize(swimmerNameParam))
       );
+      swimmerSpainRows = swimmerRows.filter(r => !isSpainImportedExternalRow(r));
 
       const displayName = swimmerRows.length
         ? displaySwimmerName(swimmerRows[0].canonical_swimmer)
@@ -374,8 +347,8 @@
 
       document.getElementById("swimmerName").textContent = displayName || "Swimmer";
 
-      const clubs = uniqueSorted(swimmerRows.map(r => r.club));
-      const seasons = uniqueSorted(swimmerRows.map(r => r.season));
+      const clubs = uniqueSorted(swimmerSpainRows.map(r => r.club));
+      const seasons = uniqueSorted(swimmerSpainRows.map(r => r.season));
 
       document.getElementById("swimmerMeta").innerHTML = `
         ${escapeHtml(clubs[0] || "Unknown club")}
@@ -383,9 +356,9 @@
         ${seasons.length ? `<span class="small" style="display:block;margin-top:6px">${escapeHtml(seasons.join(", "))}</span>` : ""}
       `;
 
-      document.getElementById("kpiRaces").textContent = swimmerRows.length;
-      document.getElementById("kpiEvents").textContent = uniqueSorted(swimmerRows.map(r => canonicalEventKey(r.event))).length;
-      document.getElementById("kpiPBs").textContent = bestRowsByEvent(swimmerRows).length;
+      document.getElementById("kpiRaces").textContent = swimmerSpainRows.length;
+      document.getElementById("kpiEvents").textContent = uniqueSorted(swimmerSpainRows.map(r => canonicalEventKey(r.event))).length;
+      document.getElementById("kpiPBs").textContent = bestRowsByEvent(swimmerSpainRows).length;
 
       const bestBtn = document.getElementById("bestBtn");
       const resultsBtn = document.getElementById("resultsBtn");
@@ -397,9 +370,9 @@
         if (mode === "results") resultsBtn.classList.add("active");
         if (mode === "progress") progressBtn.classList.add("active");
 
-        if (mode === "best") renderBest(swimmerRows);
-        if (mode === "results") renderResults(swimmerRows);
-        if (mode === "progress") renderProgress(swimmerRows);
+        if (mode === "best") renderBest();
+        if (mode === "results") renderResults();
+        if (mode === "progress") renderProgress();
       }
 
       bestBtn.addEventListener("click", () => setMode("best"));

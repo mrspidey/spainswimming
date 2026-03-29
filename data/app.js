@@ -149,6 +149,43 @@ td{font-size:14px}
 .kpi .value{font-size:24px;font-weight:700}
 .good{color:var(--green);font-weight:700}
 .bad{color:var(--red);font-weight:700}
+.primaryBtn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:auto;
+  min-width:140px;
+  padding:12px 18px;
+  border-radius:14px;
+  background:var(--blue);
+  color:#fff !important;
+  font-weight:700;
+  border:none;
+  text-decoration:none !important;
+  box-shadow:var(--shadow);
+}
+.primaryBtn:hover{
+  background:var(--blue-dark);
+  text-decoration:none;
+}
+.secondaryBtn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:auto;
+  min-width:140px;
+  padding:12px 18px;
+  border-radius:14px;
+  background:#fff;
+  color:var(--text) !important;
+  font-weight:700;
+  border:1px solid var(--line);
+  text-decoration:none !important;
+}
+.secondaryBtn:hover{
+  border-color:#c7def3;
+  text-decoration:none;
+}
 @media (max-width:900px){
   .grid.sidebar,.kpiGrid{grid-template-columns:1fr}
   .wrap{padding:10px}
@@ -239,10 +276,6 @@ function uniqueSorted(items){
   return [...new Set(items.filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'es'));
 }
 
-function eventSort(a,b,rows){
-  return ((rows.find(r=>r.event===a)?.distance||0) - (rows.find(r=>r.event===b)?.distance||0)) || a.localeCompare(b,'es');
-}
-
 function escapeHtml(s){
   return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
@@ -261,6 +294,38 @@ function isJackName(name){
   return n.includes('jack') && n.includes('simeonov');
 }
 
+function strokeEnglish(strokeOrEvent){
+  const s = String(strokeOrEvent || '');
+  const n = normalize(s);
+  if(n.includes('espalda') || n.includes('back')) return 'Backstroke';
+  if(n.includes('libre') || n.includes('free')) return 'Freestyle';
+  if(n.includes('mariposa') || n.includes('fly')) return 'Butterfly';
+  if(n.includes('braza') || n.includes('breast')) return 'Breaststroke';
+  if(n.includes('estilos') || n.includes('estilo') || n.includes('medley') || n.includes('im')) return 'Medley';
+  return '';
+}
+
+function strokeSpanish(strokeOrEvent){
+  const s = String(strokeOrEvent || '');
+  const n = normalize(s);
+  if(n.includes('espalda') || n.includes('back')) return 'Espalda';
+  if(n.includes('libre') || n.includes('free')) return 'Libre';
+  if(n.includes('mariposa') || n.includes('fly')) return 'Mariposa';
+  if(n.includes('braza') || n.includes('breast')) return 'Braza';
+  if(n.includes('estilos') || n.includes('estilo') || n.includes('medley') || n.includes('im')) return 'Estilos';
+  return '';
+}
+
+function buildEventLabel(rawEvent, stroke, distance){
+  const raw = String(rawEvent || "").trim();
+  if (raw) return raw;
+  const d = Number(distance || 0);
+  const strokeEs = strokeSpanish(stroke || "");
+  if (d && strokeEs) return `${d}m ${strokeEs}`;
+  if (d) return `${d}m Event`;
+  return "";
+}
+
 function canonicalEventKey(event){
   const e = normalize(event), d = (e.match(/\d+/)||[''])[0];
   if(!e || !d) return "";
@@ -268,14 +333,30 @@ function canonicalEventKey(event){
   if(e.includes('libre')||e.includes('free')) return `${d} free`;
   if(e.includes('mariposa')||e.includes('fly')) return `${d} fly`;
   if(e.includes('braza')||e.includes('breast')) return `${d} breast`;
-  if(e.includes('estilo')||e.includes('medley')||e.includes('im')) return `${d} im`;
-  return `${d} ${e}`.trim();
+  if(e.includes('estilos')||e.includes('estilo')||e.includes('medley')||e.includes('im')) return `${d} im`;
+  return "";
 }
 
 function hasValidEvent(event){
-  const e = String(event || "").trim();
-  if (!e) return false;
-  return Boolean(canonicalEventKey(e)) || /^Event\s+\d+$/i.test(e);
+  return Boolean(canonicalEventKey(event));
+}
+
+function eventDisplay(event){
+  return canonicalEventDisplay(event);
+}
+
+function canonicalEventDisplay(event){
+  const key = canonicalEventKey(event);
+  const m = key.match(/^(\d+)\s+(back|free|fly|breast|im)$/);
+  if(!m) return String(event || "");
+  const map = {
+    back: "Backstroke",
+    free: "Freestyle",
+    fly: "Butterfly",
+    breast: "Breaststroke",
+    im: "Medley"
+  };
+  return `${m[1]}m ${map[m[2]]}`;
 }
 
 function meetId(row){
@@ -284,61 +365,6 @@ function meetId(row){
 
 function eventId(row){
   return normalize([row.meet,row.venue,row.dateIso||row.date,row.event].join('|')).replace(/ /g,'-');
-}
-
-function strokeEnglish(strokeOrEvent){
-  const s = String(strokeOrEvent || '');
-  const n = normalize(s);
-
-  if(n.includes('espalda') || n.includes('back')) return 'Backstroke';
-  if(n.includes('libre') || n.includes('free')) return 'Freestyle';
-  if(n.includes('mariposa') || n.includes('fly')) return 'Butterfly';
-  if(n.includes('braza') || n.includes('breast')) return 'Breaststroke';
-  if(n.includes('estilos') || n.includes('estilo') || n.includes('medley') || n.includes('im')) return 'Medley';
-
-  return '';
-}
-
-function eventDisplay(event){
-  const en = strokeEnglish(event);
-  return en ? `${event} / ${en}` : event;
-}
-
-function canonicalEventDisplay(event){
-  const key = canonicalEventKey(event);
-  const m = key.match(/^(\d+)\s+(back|free|fly|breast|im)$/);
-  if(!m) return eventDisplay(event || "");
-  const strokeMap = {
-    back: "Backstroke",
-    free: "Freestyle",
-    fly: "Butterfly",
-    breast: "Breaststroke",
-    im: "Medley"
-  };
-  return `${m[1]}m ${strokeMap[m[2]]}`;
-}
-
-function buildAutocompleteOptions(rows){
-  const swimmers = uniqueSorted(rows.map(r => displaySwimmerName(r.canonical_swimmer)));
-  const clubs = uniqueSorted(rows.map(r => r.club));
-  return uniqueSorted([...swimmers, ...clubs]);
-}
-
-function mountAutocomplete(datalistId, inputId, rows){
-  let datalist = document.getElementById(datalistId);
-
-  if(!datalist){
-    datalist = document.createElement('datalist');
-    datalist.id = datalistId;
-    document.body.appendChild(datalist);
-  }
-
-  const input = document.getElementById(inputId);
-  if(input) input.setAttribute('list', datalistId);
-
-  datalist.innerHTML = buildAutocompleteOptions(rows)
-    .map(v => `<option value="${escapeHtml(v)}"></option>`)
-    .join('');
 }
 
 function parseCsv(text){
@@ -353,7 +379,7 @@ function parseCsv(text){
     const obj = {};
     headers.forEach((h,i)=> obj[h] = (vals[i] ?? '').trim());
 
-    let event = pick(obj, ["Event","event","event_name"]);
+    const rawEvent = pick(obj, ["Event","event","event_name"]);
     const stroke = pick(obj, ["Stroke","stroke"]);
     const swimmerRaw = pick(obj, ["Swimmer_Raw","Swimmer","swimmer_raw","name"]);
     const canonical = pick(obj, ["Canonical_Swimmer","Canonical","canonical_swimmer"]) || swimmerRaw;
@@ -367,16 +393,12 @@ function parseCsv(text){
     const date = pick(obj, ["Date","date"]) || dateIso;
     const time = pick(obj, ["Time","time","swimtime"]);
     const rank = Number(pick(obj, ["Rank","rank","place"]) || 0);
-
-    if (!event || !event.trim()) {
-      const fallbackEventId = pick(obj, ["event_id","Event_ID"]);
-      if (fallbackEventId) event = `Event ${fallbackEventId}`;
-    }
-
     const distance = Number(
       pick(obj, ["Distance_m","Distance","distance_m","distance"]) ||
-      ((String(event || "").match(/\d+/) || [0])[0])
+      ((String(rawEvent || "").match(/\d+/) || [0])[0])
     );
+
+    const event = buildEventLabel(rawEvent, stroke, distance);
 
     return {
       season,
@@ -398,11 +420,11 @@ function parseCsv(text){
     };
   }).filter(r =>
     r &&
-    hasValidEvent(r.event) &&
     r.canonical_swimmer &&
     r.club &&
     r.time &&
-    r.meet
+    r.meet &&
+    hasValidEvent(r.event)
   );
 }
 
@@ -418,6 +440,26 @@ function secondsToDelta(secs){
   const mins = Math.floor(val/60);
   const rem = (val-mins*60).toFixed(2).padStart(5,'0');
   return mins ? `${sign}${mins}:${rem}` : `${sign}${rem}`;
+}
+
+function buildAutocompleteOptions(rows){
+  const swimmers = uniqueSorted(rows.map(r => displaySwimmerName(r.canonical_swimmer)));
+  const clubs = uniqueSorted(rows.map(r => r.club));
+  return uniqueSorted([...swimmers, ...clubs]);
+}
+
+function mountAutocomplete(datalistId, inputId, rows){
+  let datalist = document.getElementById(datalistId);
+  if(!datalist){
+    datalist = document.createElement('datalist');
+    datalist.id = datalistId;
+    document.body.appendChild(datalist);
+  }
+  const input = document.getElementById(inputId);
+  if(input) input.setAttribute('list', datalistId);
+  datalist.innerHTML = buildAutocompleteOptions(rows)
+    .map(v => `<option value="${escapeHtml(v)}"></option>`)
+    .join('');
 }
 
 function groupMeets(rows){
@@ -443,7 +485,43 @@ function groupMeets(rows){
   return [...map.values()].map(m => ({
     ...m,
     eventCount: uniqueSorted(m.rows.map(r => canonicalEventKey(r.event))).length,
-    swimmerCount: uniqueSorted(m.rows.map(r => r.canonical_swimmer)).length,
-    complete: true
+    swimmerCount: uniqueSorted(m.rows.map(r => r.canonical_swimmer)).length
   })).sort((a,b)=>String(b.dateIso).localeCompare(String(a.dateIso))||a.meet.localeCompare(b.meet,'es'));
+}
+
+function isSpainImportedExternalRow(row){
+  const blob = normalize(`${row.meet || ""} ${row.venue || ""}`);
+  return blob.includes("bulgarian") || blob.includes("world school") || blob.includes("london");
+}
+
+function getBestRowsPerSwimmer(rows, eventKey, province){
+  const filtered = rows.filter(r =>
+    canonicalEventKey(r.event) === eventKey &&
+    Number.isFinite(r.timeSeconds) &&
+    (!province || r.province === province)
+  );
+
+  const best = new Map();
+  filtered.forEach(r => {
+    const key = normalize(r.canonical_swimmer);
+    const ex = best.get(key);
+    if (!ex || r.timeSeconds < ex.timeSeconds) best.set(key, r);
+  });
+
+  return [...best.values()].sort((a,b) => a.timeSeconds - b.timeSeconds || a.canonical_swimmer.localeCompare(b.canonical_swimmer, "es"));
+}
+
+function getSpainRanksForEvent(allRows, swimmerRow){
+  const eventKey = canonicalEventKey(swimmerRow.event);
+  const province = swimmerRow.province;
+  const swimmerCanonical = normalize(swimmerRow.canonical_swimmer);
+
+  const spainRows = allRows.filter(r => !isSpainImportedExternalRow(r));
+  const nationalRanked = getBestRowsPerSwimmer(spainRows, eventKey, "");
+  const provincialRanked = getBestRowsPerSwimmer(spainRows, eventKey, province);
+
+  return {
+    national: nationalRanked.findIndex(r => normalize(r.canonical_swimmer) === swimmerCanonical) + 1,
+    provincial: provincialRanked.findIndex(r => normalize(r.canonical_swimmer) === swimmerCanonical) + 1
+  };
 }

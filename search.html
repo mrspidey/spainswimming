@@ -59,7 +59,7 @@
     <div class="searchMeta">Filter by swimmer, club, province, stroke, or event.</div>
 
     <div class="searchLayout">
-      <div class="card panel stack searchSidebar" id="filterCard">
+      <div class="card panel stack searchSidebar">
         <div class="nav" style="margin:0">
           <a href="#" id="allBtn">All results</a>
           <a href="#" id="rankBtn" class="active">Rankings</a>
@@ -93,9 +93,9 @@
     let rows = [];
     let mode = "rank";
 
-    function buildEventOptions(rows){
+    function buildEventOptions(rowsIn){
       const map = new Map();
-      rows.forEach(r => {
+      rowsIn.forEach(r => {
         const key = canonicalEventKey(r.event);
         if (!key) return;
         map.set(key, canonicalEventDisplay(r.event));
@@ -115,10 +115,26 @@
         values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
     }
 
-    function fillEventSelect(el, rows){
-      const opts = buildEventOptions(rows);
-      el.innerHTML = `<option value="">All events</option>` +
+    function refreshEventOptions(){
+      const stroke = document.getElementById("strokeFilter").value;
+      const eventSelect = document.getElementById("eventFilter");
+      const current = eventSelect.value;
+
+      let sourceRows = rows;
+      if (stroke) {
+        sourceRows = rows.filter(r => strokeEnglish(r.event) === stroke);
+      }
+
+      const opts = buildEventOptions(sourceRows);
+      eventSelect.innerHTML =
+        `<option value="">All events</option>` +
         opts.map(o => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join("");
+
+      if (![...eventSelect.options].some(o => o.value === current)) {
+        eventSelect.value = "";
+      } else {
+        eventSelect.value = current;
+      }
     }
 
     function getFilteredRows(){
@@ -139,14 +155,12 @@
           ].join(" "));
           if (!hay.includes(q)) return false;
         }
-
         if (season && r.season !== season) return false;
         if (province && r.province !== province) return false;
         if (venue && r.venue !== venue) return false;
         if (club && r.club !== club) return false;
         if (stroke && strokeEnglish(r.event) !== stroke) return false;
         if (eventKey && canonicalEventKey(r.event) !== eventKey) return false;
-
         return true;
       });
     }
@@ -199,9 +213,7 @@
         body.innerHTML = sorted.map(r => `
           <tr>
             <td data-label="Swimmer">
-              <a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">
-                ${escapeHtml(displaySwimmerName(r.canonical_swimmer))}
-              </a>
+              <a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">${escapeHtml(displaySwimmerName(r.canonical_swimmer))}</a>
             </td>
             <td data-label="Event">${escapeHtml(canonicalEventDisplay(r.event))}</td>
             <td data-label="Time">${escapeHtml(r.time)}</td>
@@ -229,9 +241,7 @@
           <tr>
             <td data-label="Rank" class="rank">${i + 1}</td>
             <td data-label="Swimmer">
-              <a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">
-                ${escapeHtml(displaySwimmerName(r.canonical_swimmer))}
-              </a>
+              <a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">${escapeHtml(displaySwimmerName(r.canonical_swimmer))}</a>
             </td>
             <td data-label="Club">${escapeHtml(r.club)}</td>
             <td data-label="Event">${escapeHtml(canonicalEventDisplay(r.event))}</td>
@@ -251,7 +261,7 @@
       fillSelect(document.getElementById("venueFilter"), uniqueSorted(rows.map(r => r.venue)), "All venues");
       fillSelect(document.getElementById("clubFilter"), uniqueSorted(rows.map(r => r.club)), "All clubs");
       fillSelect(document.getElementById("strokeFilter"), uniqueSorted(rows.map(r => strokeEnglish(r.event)).filter(Boolean)), "All strokes");
-      fillEventSelect(document.getElementById("eventFilter"), rows);
+      refreshEventOptions();
 
       mountAutocomplete("searchDataList", "searchInput", rows);
 
@@ -267,17 +277,15 @@
         render();
       });
 
-      [
-        "searchInput",
-        "seasonFilter",
-        "provinceFilter",
-        "venueFilter",
-        "clubFilter",
-        "strokeFilter",
-        "eventFilter"
-      ].forEach(id => {
-        document.getElementById(id).addEventListener("input", render);
-        document.getElementById(id).addEventListener("change", render);
+      ["searchInput","seasonFilter","provinceFilter","venueFilter","clubFilter","eventFilter"]
+        .forEach(id => {
+          document.getElementById(id).addEventListener("input", render);
+          document.getElementById(id).addEventListener("change", render);
+        });
+
+      document.getElementById("strokeFilter").addEventListener("change", () => {
+        refreshEventOptions();
+        render();
       });
 
       document.getElementById("clearBtn").addEventListener("click", () => {
@@ -288,6 +296,7 @@
         document.getElementById("clubFilter").value = "";
         document.getElementById("strokeFilter").value = "";
         document.getElementById("eventFilter").value = "";
+        refreshEventOptions();
         render();
       });
 

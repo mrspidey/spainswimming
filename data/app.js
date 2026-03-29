@@ -254,14 +254,6 @@ function pick(obj, keys){
   return "";
 }
 
-function timeToSeconds(t){
-  if(!t) return Infinity;
-  const p = String(t).trim().split(':');
-  if(p.length===2) return Number(p[0])*60 + Number(p[1]);
-  if(p.length===3) return Number(p[0])*3600 + Number(p[1])*60 + Number(p[2]);
-  return Number(t);
-}
-
 function normalize(s){
   return String(s||'')
     .toLowerCase()
@@ -280,13 +272,90 @@ function escapeHtml(s){
   return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
 
-function displaySwimmerName(name){
-  if(!name) return '';
-  if(name.includes(',')){
-    const p = name.split(',');
-    return `${p[1].trim()} ${p[0].trim()}`.replace(/\s+/g,' ');
+function toTitleCasePart(part){
+  if (!part) return "";
+  return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+}
+
+function cleanDisplayName(name){
+  let value = String(name || "").trim();
+  if (!value) return "";
+
+  if (value.includes(",")) {
+    const bits = value.split(",");
+    const surname = (bits[0] || "").trim();
+    const given = (bits.slice(1).join(" ") || "").trim();
+    value = `${given} ${surname}`.trim();
   }
-  return name;
+
+  value = value
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map(toTitleCasePart)
+    .join(" ");
+
+  return value.trim();
+}
+
+function displaySwimmerName(name){
+  return cleanDisplayName(name);
+}
+
+function swimmerKey(name){
+  return normalize(cleanDisplayName(name));
+}
+
+function formatSwimTime(t){
+  const s = String(t || "").trim();
+  if (!s) return "";
+
+  if (/^\d+\.\d+$/.test(s)) {
+    return `00:${s.padStart(5, "0")}`;
+  }
+
+  if (/^\d+:\d+\.\d+$/.test(s)) {
+    const [m, rest] = s.split(":");
+    return `${String(m).padStart(2, "0")}:${rest}`;
+  }
+
+  if (/^\d+:\d+:\d+\.\d+$/.test(s)) {
+    const [h, m, rest] = s.split(":");
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${rest}`;
+  }
+
+  return s;
+}
+
+function timeToSeconds(t){
+  const s = formatSwimTime(t);
+  if(!s) return Infinity;
+  const p = s.split(':');
+  if(p.length===2) return Number(p[0])*60 + Number(p[1]);
+  if(p.length===3) return Number(p[0])*3600 + Number(p[1])*60 + Number(p[2]);
+  return Number(s);
+}
+
+function normalizeDateIso(value){
+  const s = String(value || "").trim();
+  if (!s) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+    const [d,m,y] = s.split("/");
+    return `${y}-${m}-${d}`;
+  }
+
+  return s;
+}
+
+function formatDateDisplay(value){
+  const iso = normalizeDateIso(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    const [y,m,d] = iso.split("-");
+    return `${d}/${m}/${y}`;
+  }
+  return String(value || "").trim();
 }
 
 function isJackName(name){
@@ -341,10 +410,6 @@ function hasValidEvent(event){
   return Boolean(canonicalEventKey(event));
 }
 
-function eventDisplay(event){
-  return canonicalEventDisplay(event);
-}
-
 function canonicalEventDisplay(event){
   const key = canonicalEventKey(event);
   const m = key.match(/^(\d+)\s+(back|free|fly|breast|im)$/);
@@ -357,6 +422,10 @@ function canonicalEventDisplay(event){
     im: "Medley"
   };
   return `${m[1]}m ${map[m[2]]}`;
+}
+
+function eventDisplay(event){
+  return canonicalEventDisplay(event);
 }
 
 function meetId(row){
@@ -382,16 +451,20 @@ function parseCsv(text){
     const rawEvent = pick(obj, ["Event","event","event_name"]);
     const stroke = pick(obj, ["Stroke","stroke"]);
     const swimmerRaw = pick(obj, ["Swimmer_Raw","Swimmer","swimmer_raw","name"]);
-    const canonical = pick(obj, ["Canonical_Swimmer","Canonical","canonical_swimmer"]) || swimmerRaw;
+    const canonicalRaw = pick(obj, ["Canonical_Swimmer","Canonical","canonical_swimmer"]) || swimmerRaw;
+    const canonical = cleanDisplayName(canonicalRaw);
     const club = pick(obj, ["Club","club"]);
     const meet = pick(obj, ["Meet","meet","meet_name"]);
     const venue = pick(obj, ["Venue","venue","city"]);
     const province = pick(obj, ["Province","province"]);
     const region = pick(obj, ["Region","region"]);
     const season = pick(obj, ["Season","season"]);
-    const dateIso = pick(obj, ["Date_ISO","date_iso","date"]);
-    const date = pick(obj, ["Date","date"]) || dateIso;
-    const time = pick(obj, ["Time","time","swimtime"]);
+    const rawDateIso = pick(obj, ["Date_ISO","date_iso","date"]);
+    const rawDate = pick(obj, ["Date","date"]) || rawDateIso;
+    const dateIso = normalizeDateIso(rawDateIso || rawDate);
+    const date = formatDateDisplay(rawDate);
+    const rawTime = pick(obj, ["Time","time","swimtime"]);
+    const time = formatSwimTime(rawTime);
     const rank = Number(pick(obj, ["Rank","rank","place"]) || 0);
     const distance = Number(
       pick(obj, ["Distance_m","Distance","distance_m","distance"]) ||
@@ -413,6 +486,7 @@ function parseCsv(text){
       dateIso,
       swimmer_raw: swimmerRaw,
       canonical_swimmer: canonical,
+      swimmer_key: swimmerKey(canonical),
       club,
       time,
       rank,
@@ -485,7 +559,7 @@ function groupMeets(rows){
   return [...map.values()].map(m => ({
     ...m,
     eventCount: uniqueSorted(m.rows.map(r => canonicalEventKey(r.event))).length,
-    swimmerCount: uniqueSorted(m.rows.map(r => r.canonical_swimmer)).length
+    swimmerCount: uniqueSorted(m.rows.map(r => r.swimmer_key || swimmerKey(r.canonical_swimmer))).length
   })).sort((a,b)=>String(b.dateIso).localeCompare(String(a.dateIso))||a.meet.localeCompare(b.meet,'es'));
 }
 
@@ -503,7 +577,7 @@ function getBestRowsPerSwimmer(rows, eventKey, province){
 
   const best = new Map();
   filtered.forEach(r => {
-    const key = normalize(r.canonical_swimmer);
+    const key = r.swimmer_key || swimmerKey(r.canonical_swimmer);
     const ex = best.get(key);
     if (!ex || r.timeSeconds < ex.timeSeconds) best.set(key, r);
   });
@@ -514,14 +588,14 @@ function getBestRowsPerSwimmer(rows, eventKey, province){
 function getSpainRanksForEvent(allRows, swimmerRow){
   const eventKey = canonicalEventKey(swimmerRow.event);
   const province = swimmerRow.province;
-  const swimmerCanonical = normalize(swimmerRow.canonical_swimmer);
+  const swimmerCanonical = swimmerRow.swimmer_key || swimmerKey(swimmerRow.canonical_swimmer);
 
   const spainRows = allRows.filter(r => !isSpainImportedExternalRow(r));
   const nationalRanked = getBestRowsPerSwimmer(spainRows, eventKey, "");
   const provincialRanked = getBestRowsPerSwimmer(spainRows, eventKey, province);
 
   return {
-    national: nationalRanked.findIndex(r => normalize(r.canonical_swimmer) === swimmerCanonical) + 1,
-    provincial: provincialRanked.findIndex(r => normalize(r.canonical_swimmer) === swimmerCanonical) + 1
+    national: nationalRanked.findIndex(r => (r.swimmer_key || swimmerKey(r.canonical_swimmer)) === swimmerCanonical) + 1,
+    provincial: provincialRanked.findIndex(r => (r.swimmer_key || swimmerKey(r.canonical_swimmer)) === swimmerCanonical) + 1
   };
 }

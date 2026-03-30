@@ -65,9 +65,11 @@
     const id = getParam("id");
 
     loadRows().then(rows => {
-      const results = rows
-        .filter(r => eventId(r) === id)
-        .sort((a,b) => (a.rank || 9999) - (b.rank || 9999) || a.timeSeconds - b.timeSeconds);
+      const results = dedupeResultRows(
+        rows
+          .filter(r => eventId(r) === id)
+          .sort((a,b) => (a.rank || 9999) - (b.rank || 9999) || a.timeSeconds - b.timeSeconds)
+      );
 
       const row = results[0];
 

@@ -687,8 +687,29 @@ function medalLabel(place){
   return `${place || ""}`;
 }
 
+function dedupeResultRows(rows){
+  const seen = new Set();
+  const out = [];
+
+  for (const r of rows) {
+    const key = [
+      canonicalEventKey(r.event),
+      r.swimmer_key || swimmerKey(r.canonical_swimmer),
+      normalize(r.club),
+      formatSwimTime(r.time),
+      String(r.rank || "")
+    ].join("|");
+
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+  }
+
+  return out;
+}
+
 function topThreeForRows(rows){
-  return [...rows]
+  return dedupeResultRows(rows)
     .filter(r => [1,2,3].includes(Number(r.rank)))
     .sort((a,b) => Number(a.rank) - Number(b.rank))
     .slice(0,3);

@@ -55,7 +55,8 @@
     }
 
     loadRows().then(rows => {
-      const meetRows = rows.filter(matchMeetRow);
+      const meetRowsRaw = rows.filter(matchMeetRow);
+      const meetRows = dedupeResultRows(meetRowsRaw);
 
       if (!meetRows.length) {
         document.getElementById("meetTitle").textContent = "Meet not found";
@@ -93,8 +94,10 @@
       });
 
       document.getElementById("eventBlocks").innerHTML = eventKeys.map(key => {
-        const eventRows = [...groupedByEvent.get(key)].sort((a,b) =>
-          (a.rank || 9999) - (b.rank || 9999) || a.timeSeconds - b.timeSeconds
+        const eventRows = dedupeResultRows(
+          [...groupedByEvent.get(key)].sort((a,b) =>
+            (a.rank || 9999) - (b.rank || 9999) || a.timeSeconds - b.timeSeconds
+          )
         );
 
         const topThree = topThreeForRows(eventRows);

@@ -29,12 +29,9 @@
       color:#075985;
       box-shadow:inset 0 0 0 1px #1d9bf0;
     }
-    .section{
-      display:none;
-    }
-    .section.active{
-      display:block;
-    }
+    .section{display:none}
+    .section.active{display:block}
+
     .chartGrid{
       display:grid;
       grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
@@ -92,9 +89,7 @@
     }
     .dot.progress{background:#0ea5e9}
     .dot.pb{background:#16a34a}
-    .heroName{
-      margin-bottom:8px;
-    }
+    .heroName{margin-bottom:8px}
     .subline{
       color:var(--muted);
       font-size:14px;
@@ -166,7 +161,6 @@
             <tbody id="bestBody"></tbody>
           </table>
         </div>
-
         <div class="chartGrid" id="bestCharts"></div>
       </div>
     </div>
@@ -209,7 +203,6 @@
             <tbody id="pbBody"></tbody>
           </table>
         </div>
-
         <div class="chartGrid" id="pbCharts"></div>
       </div>
     </div>
@@ -223,29 +216,9 @@
     function byEventSort(a, b){
       const ka = canonicalEventKey(a);
       const kb = canonicalEventKey(b);
-      const da = Number((ka.match(/\d+/) || ["0"])[0]);
-      const db = Number((kb.match(/\d+/) || ["0"])[0]);
+      const da = Number((ka.match(/\\d+/) || ["0"])[0]);
+      const db = Number((kb.match(/\\d+/) || ["0"])[0]);
       return da - db || canonicalEventDisplay(a).localeCompare(canonicalEventDisplay(b), "es");
-    }
-
-    function buildBestRows(swimmerRows, allRows){
-      const byEvent = new Map();
-
-      swimmerRows.forEach(r => {
-        const key = canonicalEventKey(r.event);
-        if (!key) return;
-        const existing = byEvent.get(key);
-        if (!existing || r.timeSeconds < existing.timeSeconds) {
-          byEvent.set(key, r);
-        }
-      });
-
-      return [...byEvent.values()]
-        .sort((a,b) => byEventSort(a.event, b.event))
-        .map(r => {
-          const ranks = getSpainRanksForEvent(allRows, r);
-          return { ...r, provincialRank: ranks.provincial || "—", nationalRank: ranks.national || "—" };
-        });
     }
 
     function dedupeRows(rows){
@@ -260,12 +233,35 @@
           String(r.rank || ""),
           normalizeDateIso(r.dateIso || r.date)
         ].join("|");
-
         if (seen.has(key)) continue;
         seen.add(key);
         out.push(r);
       }
       return out;
+    }
+
+    function buildBestRows(swimmerRows, allSpainRows){
+      const byEvent = new Map();
+
+      swimmerRows.forEach(r => {
+        const key = canonicalEventKey(r.event);
+        if (!key) return;
+        const existing = byEvent.get(key);
+        if (!existing || r.timeSeconds < existing.timeSeconds) {
+          byEvent.set(key, r);
+        }
+      });
+
+      return [...byEvent.values()]
+        .sort((a,b) => byEventSort(a.event, b.event))
+        .map(r => {
+          const ranks = getSpainRanksForEvent(allSpainRows, r);
+          return {
+            ...r,
+            provincialRank: ranks.provincial || "—",
+            nationalRank: ranks.national || "—"
+          };
+        });
     }
 
     function buildSeriesRows(rows, eventKey){
@@ -377,7 +373,6 @@
 
     loadRows().then(allRowsRaw => {
       const allRows = dedupeRows(allRowsRaw);
-
       const spainRows = allRows.filter(r => !isSpainImportedExternalRow(r));
 
       const targetKey = swimmerKey(swimmerParam);
@@ -437,13 +432,11 @@
           </tr>
         `).join("");
 
-      const bestChartsHtml = bestRows.map(bestRow => {
+      document.getElementById("bestCharts").innerHTML = bestRows.map(bestRow => {
         const key = canonicalEventKey(bestRow.event);
         const seriesRows = buildSeriesRows(swimmerRows, key);
         return chartCardHtml(canonicalEventDisplay(bestRow.event), seriesRows, bestRow);
       }).join("");
-
-      document.getElementById("bestCharts").innerHTML = bestChartsHtml;
 
       const pbRows = JACK_BASELINES.map(base => {
         const best = bestRows.find(r => canonicalEventKey(r.event) === base.key);
@@ -454,7 +447,6 @@
           label: base.label,
           baseline: base.time,
           current: best.time,
-          currentSeconds: best.timeSeconds,
           delta,
           source: base.source,
           bestRow: best

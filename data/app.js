@@ -436,21 +436,27 @@ function isJackName(name){
   return n.includes('jack') && n.includes('simeonov');
 }
 
+function eventDetectionSource(value){
+  const raw = String(value || "");
+  const firstPart = raw.split("/")[0].split(" - ")[0].trim();
+  return normalize(firstPart || raw);
+}
+
 function detectStrokeKey(value){
-  const e = normalize(value || "");
+  const e = eventDetectionSource(value);
   if (!e) return "";
 
   const patterns = [
-    ["breast", ["\\bbraza\\b", "\\bbreaststroke\\b", "\\bbreast\\b"]],
-    ["back",   ["\\bespalda\\b", "\\bbackstroke\\b", "\\bback\\b"]],
-    ["fly",    ["\\bmariposa\\b", "\\bfly\\b", "\\bbutterfly\\b"]],
-    ["free",   ["\\blibre\\b", "\\bfreestyle\\b", "\\bfree\\b"]],
-    ["im",     ["\\bestilos\\b", "\\bestilo\\b", "\\bmedley\\b", "\\bim\\b"]],
+    ["breast", [/\bbraza\b/, /\bbreaststroke\b/, /\bbreast\b/]],
+    ["back",   [/\bespalda\b/, /\bbackstroke\b/, /\bback\b/]],
+    ["fly",    [/\bmariposa\b/, /\bfly\b/, /\bbutterfly\b/]],
+    ["free",   [/\blibre\b/, /\bfreestyle\b/, /\bfree\b/]],
+    ["im",     [/\bestilos\b/, /\bestilo\b/, /\bmedley\b/, /\bim\b/]],
   ];
 
   for (const [key, pats] of patterns){
     for (const pat of pats){
-      if (new RegExp(pat).test(e)) return key;
+      if (pat.test(e)) return key;
     }
   }
   return "";
@@ -489,9 +495,9 @@ function buildEventLabel(rawEvent, stroke, distance){
 }
 
 function canonicalEventKey(event){
-  const e = String(event || "");
-  const d = (normalize(e).match(/\d+/) || [''])[0];
-  const stroke = detectStrokeKey(e);
+  const source = eventDetectionSource(event);
+  const d = (source.match(/\d+/) || [''])[0];
+  const stroke = detectStrokeKey(source);
   if (!d || !stroke) return "";
   return `${d} ${stroke}`;
 }

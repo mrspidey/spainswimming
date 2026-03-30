@@ -31,7 +31,6 @@
     }
     .section{display:none}
     .section.active{display:block}
-
     .chartGrid{
       display:grid;
       grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
@@ -216,8 +215,8 @@
     function byEventSort(a, b){
       const ka = canonicalEventKey(a);
       const kb = canonicalEventKey(b);
-      const da = Number((ka.match(/\\d+/) || ["0"])[0]);
-      const db = Number((kb.match(/\\d+/) || ["0"])[0]);
+      const da = Number((ka.match(/\d+/) || ["0"])[0]);
+      const db = Number((kb.match(/\d+/) || ["0"])[0]);
       return da - db || canonicalEventDisplay(a).localeCompare(canonicalEventDisplay(b), "es");
     }
 

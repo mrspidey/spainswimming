@@ -22,6 +22,12 @@ const styles = `
   --blue-soft:#e0f2fe;
   --green:#16a34a;
   --red:#dc2626;
+  --gold:#d4af37;
+  --silver:#8d99a6;
+  --bronze:#b87333;
+  --gold-soft:#fff7da;
+  --silver-soft:#f3f5f7;
+  --bronze-soft:#fff1e7;
   --shadow:0 1px 2px rgba(15,23,42,.04);
 }
 *{box-sizing:border-box}
@@ -186,10 +192,85 @@ td{font-size:14px}
   border-color:#c7def3;
   text-decoration:none;
 }
+.medalCell{width:84px}
+.medalBadge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:44px;
+  height:36px;
+  border-radius:10px;
+  font-weight:800;
+  font-size:18px;
+}
+.medalGold{background:var(--gold-soft);color:var(--gold);border:1px solid #edd98b}
+.medalSilver{background:var(--silver-soft);color:#6b7280;border:1px solid #d9dde2}
+.medalBronze{background:var(--bronze-soft);color:#9a5d31;border:1px solid #e6bf9d}
+.eventCard{
+  border:1px solid var(--line);
+  border-radius:16px;
+  overflow:hidden;
+  background:#fff
+}
+.eventCardHead{
+  padding:14px 16px;
+  border-bottom:1px solid #eef2f7;
+  background:linear-gradient(180deg,#fbfeff 0%, #f5fbff 100%);
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:flex-start;
+  flex-wrap:wrap
+}
+.eventCardTitle{
+  font-weight:800;
+  font-size:18px;
+  margin:0 0 4px
+}
+.eventCardMeta{
+  color:var(--muted);
+  font-size:13px
+}
+.topThreeGrid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:10px;
+  margin-top:12px
+}
+.topThreeCard{
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:12px;
+  background:#fff
+}
+.topThreeCard.gold{background:var(--gold-soft);border-color:#edd98b}
+.topThreeCard.silver{background:var(--silver-soft);border-color:#d9dde2}
+.topThreeCard.bronze{background:var(--bronze-soft);border-color:#e6bf9d}
+.topThreePlace{
+  font-size:12px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  margin-bottom:8px
+}
+.topThreeSwimmer{
+  font-weight:800;
+  margin-bottom:4px
+}
+.topThreeClub{
+  color:var(--muted);
+  font-size:12px;
+  margin-bottom:6px
+}
+.topThreeTime{
+  font-size:20px;
+  font-weight:800
+}
 @media (max-width:900px){
   .grid.sidebar,.kpiGrid{grid-template-columns:1fr}
   .wrap{padding:10px}
   h1{font-size:26px}
+  .topThreeGrid{grid-template-columns:1fr}
 }
 @media (max-width:640px){
   table{min-width:0}
@@ -215,6 +296,7 @@ td{font-size:14px}
     color:var(--muted);
     margin-bottom:4px
   }
+  .medalCell{width:auto}
 }
 </style>`;
 
@@ -308,21 +390,15 @@ function swimmerKey(name){
 function formatSwimTime(t){
   const s = String(t || "").trim();
   if (!s) return "";
-
-  if (/^\d+\.\d+$/.test(s)) {
-    return `00:${s.padStart(5, "0")}`;
-  }
-
+  if (/^\d+\.\d+$/.test(s)) return `00:${s.padStart(5, "0")}`;
   if (/^\d+:\d+\.\d+$/.test(s)) {
     const [m, rest] = s.split(":");
     return `${String(m).padStart(2, "0")}:${rest}`;
   }
-
   if (/^\d+:\d+:\d+\.\d+$/.test(s)) {
     const [h, m, rest] = s.split(":");
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${rest}`;
   }
-
   return s;
 }
 
@@ -338,14 +414,11 @@ function timeToSeconds(t){
 function normalizeDateIso(value){
   const s = String(value || "").trim();
   if (!s) return "";
-
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
     const [d,m,y] = s.split("/");
     return `${y}-${m}-${d}`;
   }
-
   return s;
 }
 
@@ -598,4 +671,25 @@ function getSpainRanksForEvent(allRows, swimmerRow){
     national: nationalRanked.findIndex(r => (r.swimmer_key || swimmerKey(r.canonical_swimmer)) === swimmerCanonical) + 1,
     provincial: provincialRanked.findIndex(r => (r.swimmer_key || swimmerKey(r.canonical_swimmer)) === swimmerCanonical) + 1
   };
+}
+
+function medalClass(place){
+  if (place === 1) return "medalGold";
+  if (place === 2) return "medalSilver";
+  if (place === 3) return "medalBronze";
+  return "";
+}
+
+function medalLabel(place){
+  if (place === 1) return "1.";
+  if (place === 2) return "2.";
+  if (place === 3) return "3.";
+  return `${place || ""}`;
+}
+
+function topThreeForRows(rows){
+  return [...rows]
+    .filter(r => [1,2,3].includes(Number(r.rank)))
+    .sort((a,b) => Number(a.rank) - Number(b.rank))
+    .slice(0,3);
 }

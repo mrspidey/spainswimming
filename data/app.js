@@ -441,16 +441,16 @@ function detectStrokeKey(value){
   if (!e) return "";
 
   const patterns = [
-    ["breast", [/\bbraza\b/, /\bbreaststroke\b/, /\bbreast\b/]],
-    ["back",   [/\bespalda\b/, /\bbackstroke\b/, /\bback\b/]],
-    ["fly",    [/\bmariposa\b/, /\bfly\b/, /\bbutterfly\b/]],
-    ["free",   [/\blibre\b/, /\bfreestyle\b/, /\bfree\b/]],
-    ["im",     [/\bestilos\b/, /\bestilo\b/, /\bmedley\b/, /\bim\b/]],
+    ["breast", ["\\bbraza\\b", "\\bbreaststroke\\b", "\\bbreast\\b"]],
+    ["back",   ["\\bespalda\\b", "\\bbackstroke\\b", "\\bback\\b"]],
+    ["fly",    ["\\bmariposa\\b", "\\bfly\\b", "\\bbutterfly\\b"]],
+    ["free",   ["\\blibre\\b", "\\bfreestyle\\b", "\\bfree\\b"]],
+    ["im",     ["\\bestilos\\b", "\\bestilo\\b", "\\bmedley\\b", "\\bim\\b"]],
   ];
 
   for (const [key, pats] of patterns){
     for (const pat of pats){
-      if (pat.test(e)) return key;
+      if (new RegExp(pat).test(e)) return key;
     }
   }
   return "";

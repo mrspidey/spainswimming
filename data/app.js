@@ -436,26 +436,46 @@ function isJackName(name){
   return n.includes('jack') && n.includes('simeonov');
 }
 
+function detectStrokeKey(value){
+  const e = normalize(value || "");
+  if (!e) return "";
+
+  const patterns = [
+    ["breast", [/\bbraza\b/, /\bbreaststroke\b/, /\bbreast\b/]],
+    ["back",   [/\bespalda\b/, /\bbackstroke\b/, /\bback\b/]],
+    ["fly",    [/\bmariposa\b/, /\bfly\b/, /\bbutterfly\b/]],
+    ["free",   [/\blibre\b/, /\bfreestyle\b/, /\bfree\b/]],
+    ["im",     [/\bestilos\b/, /\bestilo\b/, /\bmedley\b/, /\bim\b/]],
+  ];
+
+  for (const [key, pats] of patterns){
+    for (const pat of pats){
+      if (pat.test(e)) return key;
+    }
+  }
+  return "";
+}
+
 function strokeEnglish(strokeOrEvent){
-  const s = String(strokeOrEvent || '');
-  const n = normalize(s);
-  if(n.includes('espalda') || n.includes('back')) return 'Backstroke';
-  if(n.includes('libre') || n.includes('free')) return 'Freestyle';
-  if(n.includes('mariposa') || n.includes('fly')) return 'Butterfly';
-  if(n.includes('braza') || n.includes('breast')) return 'Breaststroke';
-  if(n.includes('estilos') || n.includes('estilo') || n.includes('medley') || n.includes('im')) return 'Medley';
-  return '';
+  const key = detectStrokeKey(strokeOrEvent);
+  return ({
+    back: "Backstroke",
+    free: "Freestyle",
+    fly: "Butterfly",
+    breast: "Breaststroke",
+    im: "Medley"
+  })[key] || "";
 }
 
 function strokeSpanish(strokeOrEvent){
-  const s = String(strokeOrEvent || '');
-  const n = normalize(s);
-  if(n.includes('espalda') || n.includes('back')) return 'Espalda';
-  if(n.includes('libre') || n.includes('free')) return 'Libre';
-  if(n.includes('mariposa') || n.includes('fly')) return 'Mariposa';
-  if(n.includes('braza') || n.includes('breast')) return 'Braza';
-  if(n.includes('estilos') || n.includes('estilo') || n.includes('medley') || n.includes('im')) return 'Estilos';
-  return '';
+  const key = detectStrokeKey(strokeOrEvent);
+  return ({
+    back: "Espalda",
+    free: "Libre",
+    fly: "Mariposa",
+    breast: "Braza",
+    im: "Estilos"
+  })[key] || "";
 }
 
 function buildEventLabel(rawEvent, stroke, distance){
@@ -469,14 +489,11 @@ function buildEventLabel(rawEvent, stroke, distance){
 }
 
 function canonicalEventKey(event){
-  const e = normalize(event), d = (e.match(/\d+/)||[''])[0];
-  if(!e || !d) return "";
-  if(e.includes('espalda')||e.includes('back')) return `${d} back`;
-  if(e.includes('libre')||e.includes('free')) return `${d} free`;
-  if(e.includes('mariposa')||e.includes('fly')) return `${d} fly`;
-  if(e.includes('braza')||e.includes('breast')) return `${d} breast`;
-  if(e.includes('estilos')||e.includes('estilo')||e.includes('medley')||e.includes('im')) return `${d} im`;
-  return "";
+  const e = String(event || "");
+  const d = (normalize(e).match(/\d+/) || [''])[0];
+  const stroke = detectStrokeKey(e);
+  if (!d || !stroke) return "";
+  return `${d} ${stroke}`;
 }
 
 function hasValidEvent(event){

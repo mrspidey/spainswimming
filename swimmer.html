@@ -1,1 +1,480 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Swimmer Profile</title><script src="data/app.js"></script></head><body><div class="wrap"><div class="nav"><a href="index.html">Home</a><a href="search.html">Search</a><a href="clubs.html">Clubs</a></div><a class="secondaryBtn" href="search.html" style="margin-bottom:14px">← Back</a><div class="card panel"><div class="hero"><div><h1 id="swimmerName">Swimmer</h1><div id="swimmerMeta" class="muted"></div></div><div class="kpiGrid"><div class="kpi"><div class="label">Races</div><div class="value" id="kpiRaces">0</div></div><div class="kpi"><div class="label">Events</div><div class="value" id="kpiEvents">0</div></div><div class="kpi"><div class="label">PBs tracked</div><div class="value" id="kpiPBs">0</div></div></div></div></div><div class="card panel" style="margin-top:14px"><h2>Best times</h2><div class="muted" style="margin-bottom:10px">Ranks are gender-aware. Click a rank to open that exact event ranking.</div><div class="tableWrap"><table><thead><tr><th>Event</th><th>Best time</th><th>Meet</th><th>Date</th><th>Provincial rank</th><th>National rank</th></tr></thead><tbody id="bestRows"></tbody></table></div></div><div class="card panel" style="margin-top:14px"><h2>All results</h2><div class="tableWrap"><table><thead><tr><th>Date</th><th>Event</th><th>Time</th><th>Meet</th><th>Venue</th></tr></thead><tbody id="allRows"></tbody></table></div></div></div></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Swimmer Profile</title>
+  <script src="data/app.js"></script>
+  <style>
+    .tabs{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:10px;
+    }
+    .tabBtn{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:14px 16px;
+      border-radius:14px;
+      border:1px solid var(--line);
+      background:#fff;
+      color:var(--text);
+      font-weight:800;
+      cursor:pointer;
+    }
+    .tabBtn.active{
+      background:var(--blue-soft);
+      border-color:#9fd6fb;
+      color:#075985;
+      box-shadow:inset 0 0 0 1px #1d9bf0;
+    }
+    .section{display:none}
+    .section.active{display:block}
+    .chartGrid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+      gap:14px;
+      margin-top:14px;
+    }
+    .chartCard{
+      border:1px solid var(--line);
+      border-radius:16px;
+      background:#fff;
+      padding:14px;
+      box-shadow:var(--shadow);
+    }
+    .chartTitle{
+      font-size:16px;
+      font-weight:800;
+      margin-bottom:4px;
+    }
+    .chartMeta{
+      color:var(--muted);
+      font-size:12px;
+      margin-bottom:10px;
+    }
+    .chartWrap{
+      border:1px solid var(--line);
+      border-radius:12px;
+      background:linear-gradient(180deg,#fbfdff 0%, #f6fbff 100%);
+      padding:8px;
+      height:170px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .chartSvg{
+      width:100%;
+      height:100%;
+      display:block;
+    }
+    .chartLegend{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+      font-size:12px;
+      color:var(--muted);
+      margin-top:10px;
+    }
+    .dot{
+      display:inline-block;
+      width:10px;
+      height:10px;
+      border-radius:50%;
+      margin-right:4px;
+      vertical-align:middle;
+    }
+    .dot.progress{background:#0ea5e9}
+    .dot.pb{background:#16a34a}
+    .heroName{margin-bottom:8px}
+    .subline{
+      color:var(--muted);
+      font-size:14px;
+      margin-top:4px;
+    }
+    @media (max-width:700px){
+      .tabs{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="nav">
+      <a href="index.html">Home</a>
+      <a href="search.html">Search</a>
+      <a href="clubs.html">Clubs</a>
+    </div>
+
+    <a class="secondaryBtn" style="margin-bottom:14px" href="javascript:history.back()">← Back</a>
+
+    <div class="card panel">
+      <div class="hero">
+        <div>
+          <h1 id="swimmerName" class="heroName">Swimmer</h1>
+          <div id="swimmerClub" class="muted"></div>
+          <div class="subline" id="swimmerSeason"></div>
+        </div>
+        <div class="kpiGrid" style="max-width:720px;width:100%">
+          <div class="kpi">
+            <div class="label">Races</div>
+            <div class="value" id="kpiRaces">0</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Events</div>
+            <div class="value" id="kpiEvents">0</div>
+          </div>
+          <div class="kpi">
+            <div class="label">PBs tracked</div>
+            <div class="value" id="kpiPbs">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card panel" style="margin-top:16px">
+      <div class="tabs">
+        <button class="tabBtn" id="tabBest">Best times</button>
+        <button class="tabBtn" id="tabAll">All results</button>
+        <button class="tabBtn active" id="tabPb">PB vs baseline</button>
+      </div>
+      <div class="muted" id="tabNote" style="margin-top:12px">Baseline seeded from Bulgaria and World School results.</div>
+    </div>
+
+    <div id="sectionBest" class="section" style="margin-top:16px">
+      <div class="card panel">
+        <h2>Best times</h2>
+        <div class="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Event</th>
+                <th>Best time</th>
+                <th>Meet</th>
+                <th>Date</th>
+                <th>Provincial rank</th>
+                <th>National rank</th>
+              </tr>
+            </thead>
+            <tbody id="bestBody"></tbody>
+          </table>
+        </div>
+        <div class="chartGrid" id="bestCharts"></div>
+      </div>
+    </div>
+
+    <div id="sectionAll" class="section" style="margin-top:16px">
+      <div class="card panel">
+        <h2>All results</h2>
+        <div class="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Event</th>
+                <th>Time</th>
+                <th>Place</th>
+                <th>Meet</th>
+                <th>Club</th>
+              </tr>
+            </thead>
+            <tbody id="allBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="sectionPb" class="section active" style="margin-top:16px">
+      <div class="card panel">
+        <h2>PB vs baseline</h2>
+        <div class="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Event</th>
+                <th>Baseline PB</th>
+                <th>Current PB</th>
+                <th>Δ PB vs baseline</th>
+                <th>Source</th>
+              </tr>
+            </thead>
+            <tbody id="pbBody"></tbody>
+          </table>
+        </div>
+        <div class="chartGrid" id="pbCharts"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    injectStyles();
+
+    const swimmerParam = getParam("name");
+
+    function byEventSort(a, b){
+      const ka = canonicalEventKey(a);
+      const kb = canonicalEventKey(b);
+      const da = Number((ka.match(/\d+/) || ["0"])[0]);
+      const db = Number((kb.match(/\d+/) || ["0"])[0]);
+      return da - db || canonicalEventDisplay(a).localeCompare(canonicalEventDisplay(b), "es");
+    }
+
+    function dedupeRows(rows){
+      const seen = new Set();
+      const out = [];
+      for (const r of rows) {
+        const key = [
+          canonicalEventKey(r.event),
+          r.swimmer_key || swimmerKey(r.canonical_swimmer),
+          normalize(r.club),
+          formatSwimTime(r.time),
+          String(r.rank || ""),
+          normalizeDateIso(r.dateIso || r.date)
+        ].join("|");
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(r);
+      }
+      return out;
+    }
+
+    function buildBestRows(swimmerRows, allSpainRows){
+      const byEvent = new Map();
+
+      swimmerRows.forEach(r => {
+        const key = canonicalEventKey(r.event);
+        if (!key) return;
+        const existing = byEvent.get(key);
+        if (!existing || r.timeSeconds < existing.timeSeconds) {
+          byEvent.set(key, r);
+        }
+      });
+
+      return [...byEvent.values()]
+        .sort((a,b) => byEventSort(a.event, b.event))
+        .map(r => {
+          const ranks = getSpainRanksForEvent(allSpainRows, r);
+          return {
+            ...r,
+            provincialRank: ranks.provincial || "—",
+            nationalRank: ranks.national || "—"
+          };
+        });
+    }
+
+    function buildSeriesRows(rows, eventKey){
+      return dedupeRows(
+        rows
+          .filter(r => canonicalEventKey(r.event) === eventKey)
+          .sort((a,b) =>
+            String(a.dateIso || "").localeCompare(String(b.dateIso || "")) ||
+            a.timeSeconds - b.timeSeconds
+          )
+      );
+    }
+
+    function renderChart(rows, bestRow){
+      if (!rows.length) {
+        return `<div class="empty">No chart data.</div>`;
+      }
+
+      const width = 320;
+      const height = 150;
+      const padX = 20;
+      const padY = 16;
+
+      const vals = rows.map(r => r.timeSeconds);
+      const min = Math.min(...vals);
+      const max = Math.max(...vals);
+      const range = Math.max(max - min, 0.5);
+
+      const points = rows.map((r, i) => {
+        const x = rows.length === 1
+          ? width / 2
+          : padX + (i * (width - padX * 2) / (rows.length - 1));
+        const y = padY + ((r.timeSeconds - min) / range) * (height - padY * 2);
+        return { x, y, row: r };
+      });
+
+      const path = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+
+      const bestKey = [
+        canonicalEventKey(bestRow.event),
+        bestRow.swimmer_key || swimmerKey(bestRow.canonical_swimmer),
+        normalize(bestRow.club),
+        formatSwimTime(bestRow.time),
+        String(bestRow.rank || ""),
+        normalizeDateIso(bestRow.dateIso || bestRow.date)
+      ].join("|");
+
+      return `
+        <div class="chartWrap">
+          <svg class="chartSvg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
+            <line x1="${padX}" y1="${height - padY}" x2="${width - padX}" y2="${height - padY}" stroke="#d9e9f7" stroke-width="1"/>
+            <path d="${path}" fill="none" stroke="#0ea5e9" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            ${points.map(p => {
+              const rowKey = [
+                canonicalEventKey(p.row.event),
+                p.row.swimmer_key || swimmerKey(p.row.canonical_swimmer),
+                normalize(p.row.club),
+                formatSwimTime(p.row.time),
+                String(p.row.rank || ""),
+                normalizeDateIso(p.row.dateIso || p.row.date)
+              ].join("|");
+              const isBest = rowKey === bestKey;
+              return `<circle cx="${p.x}" cy="${p.y}" r="${isBest ? 4.5 : 3.5}" fill="${isBest ? "#16a34a" : "#0ea5e9"}"/>`;
+            }).join("")}
+          </svg>
+        </div>
+      `;
+    }
+
+    function chartCardHtml(label, seriesRows, bestRow){
+      const latest = seriesRows[seriesRows.length - 1];
+      return `
+        <div class="chartCard">
+          <div class="chartTitle">${escapeHtml(label)}</div>
+          <div class="chartMeta">${seriesRows.length} swims • best ${escapeHtml(bestRow.time)}</div>
+          ${renderChart(seriesRows, bestRow)}
+          <div class="chartLegend">
+            <span><span class="dot progress"></span>Progress</span>
+            <span><span class="dot pb"></span>PB point</span>
+          </div>
+          <div class="small" style="margin-top:8px">Latest: ${escapeHtml(latest.time)} (${escapeHtml(latest.date)})</div>
+        </div>
+      `;
+    }
+
+    function setActiveTab(which){
+      const tabBest = document.getElementById("tabBest");
+      const tabAll = document.getElementById("tabAll");
+      const tabPb = document.getElementById("tabPb");
+
+      const sectionBest = document.getElementById("sectionBest");
+      const sectionAll = document.getElementById("sectionAll");
+      const sectionPb = document.getElementById("sectionPb");
+
+      [tabBest, tabAll, tabPb].forEach(el => el.classList.remove("active"));
+      [sectionBest, sectionAll, sectionPb].forEach(el => el.classList.remove("active"));
+
+      if (which === "best") {
+        tabBest.classList.add("active");
+        sectionBest.classList.add("active");
+      } else if (which === "all") {
+        tabAll.classList.add("active");
+        sectionAll.classList.add("active");
+      } else {
+        tabPb.classList.add("active");
+        sectionPb.classList.add("active");
+      }
+    }
+
+    loadRows().then(allRowsRaw => {
+      const allRows = dedupeRows(allRowsRaw);
+      const spainRows = allRows.filter(r => !isSpainImportedExternalRow(r));
+
+      const targetKey = swimmerKey(swimmerParam);
+      const swimmerRows = spainRows.filter(r => (r.swimmer_key || swimmerKey(r.canonical_swimmer)) === targetKey);
+
+      if (!swimmerRows.length) {
+        document.getElementById("swimmerName").textContent = "Swimmer not found";
+        document.getElementById("swimmerClub").textContent = "No Spain results found.";
+        return;
+      }
+
+      swimmerRows.sort((a,b) =>
+        String(b.dateIso || "").localeCompare(String(a.dateIso || "")) ||
+        a.timeSeconds - b.timeSeconds
+      );
+
+      const swimmerName = displaySwimmerName(swimmerRows[0].canonical_swimmer);
+      const clubsByCount = new Map();
+      swimmerRows.forEach(r => clubsByCount.set(r.club, (clubsByCount.get(r.club) || 0) + 1));
+      const primaryClub = [...clubsByCount.entries()].sort((a,b) => b[1] - a[1])[0]?.[0] || swimmerRows[0].club;
+      const primarySeason = uniqueSorted(swimmerRows.map(r => r.season)).slice(-1)[0] || "";
+
+      document.getElementById("swimmerName").textContent = swimmerName;
+      document.getElementById("swimmerClub").textContent = primaryClub;
+      document.getElementById("swimmerSeason").textContent = primarySeason;
+
+      const bestRows = buildBestRows(swimmerRows, spainRows);
+
+      document.getElementById("kpiRaces").textContent = swimmerRows.length;
+      document.getElementById("kpiEvents").textContent = bestRows.length;
+      document.getElementById("kpiPbs").textContent = JACK_BASELINES.length;
+
+      document.getElementById("bestBody").innerHTML = bestRows.map(r => `
+        <tr>
+          <td data-label="Event">${escapeHtml(canonicalEventDisplay(r.event))}</td>
+          <td data-label="Best time">${escapeHtml(r.time)}</td>
+          <td data-label="Meet">${escapeHtml(r.meet)}</td>
+          <td data-label="Date">${escapeHtml(r.date)}</td>
+          <td data-label="Provincial rank">${escapeHtml(String(r.provincialRank || "—"))}</td>
+          <td data-label="National rank">${escapeHtml(String(r.nationalRank || "—"))}</td>
+        </tr>
+      `).join("");
+
+      document.getElementById("allBody").innerHTML = swimmerRows
+        .sort((a,b) =>
+          String(b.dateIso || "").localeCompare(String(a.dateIso || "")) ||
+          a.timeSeconds - b.timeSeconds
+        )
+        .map(r => `
+          <tr>
+            <td data-label="Date">${escapeHtml(r.date)}</td>
+            <td data-label="Event">${escapeHtml(canonicalEventDisplay(r.event))}</td>
+            <td data-label="Time">${escapeHtml(r.time)}</td>
+            <td data-label="Place">${escapeHtml(String(r.rank || ""))}</td>
+            <td data-label="Meet">${escapeHtml(r.meet)}</td>
+            <td data-label="Club">${escapeHtml(r.club)}</td>
+          </tr>
+        `).join("");
+
+      document.getElementById("bestCharts").innerHTML = bestRows.map(bestRow => {
+        const key = canonicalEventKey(bestRow.event);
+        const seriesRows = buildSeriesRows(swimmerRows, key);
+        return chartCardHtml(canonicalEventDisplay(bestRow.event), seriesRows, bestRow);
+      }).join("");
+
+      const pbRows = JACK_BASELINES.map(base => {
+        const best = bestRows.find(r => canonicalEventKey(r.event) === base.key);
+        if (!best) return null;
+        const delta = best.timeSeconds - timeToSeconds(base.time);
+        return {
+          key: base.key,
+          label: base.label,
+          baseline: base.time,
+          current: best.time,
+          delta,
+          source: base.source,
+          bestRow: best
+        };
+      }).filter(Boolean);
+
+      document.getElementById("pbBody").innerHTML = pbRows.map(r => `
+        <tr>
+          <td data-label="Event">${escapeHtml(r.label)}</td>
+          <td data-label="Baseline PB">${escapeHtml(r.baseline)}</td>
+          <td data-label="Current PB">${escapeHtml(r.current)}</td>
+          <td data-label="Δ PB vs baseline" class="${r.delta <= 0 ? 'good' : 'bad'}">${escapeHtml(secondsToDelta(r.delta))}</td>
+          <td data-label="Source">${escapeHtml(r.source)}</td>
+        </tr>
+      `).join("");
+
+      document.getElementById("pbCharts").innerHTML = pbRows.map(r => {
+        const seriesRows = buildSeriesRows(swimmerRows, r.key);
+        return chartCardHtml(r.label, seriesRows, r.bestRow);
+      }).join("");
+
+      document.getElementById("tabBest").addEventListener("click", () => setActiveTab("best"));
+      document.getElementById("tabAll").addEventListener("click", () => setActiveTab("all"));
+      document.getElementById("tabPb").addEventListener("click", () => setActiveTab("pb"));
+    }).catch(err => {
+      console.error(err);
+      document.getElementById("swimmerName").textContent = "Failed to load swimmer";
+      document.getElementById("swimmerClub").textContent = "Could not load the CSV file.";
+    });
+  </script>
+</body>
+</html>

@@ -1,1 +1,136 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Event Results</title><script src="data/app.js"></script></head><body><div class="wrap"><div class="nav"><a href="index.html">Home</a><a href="search.html">Search</a><a href="clubs.html">Clubs</a></div><a class="secondaryBtn" href="index.html" style="margin-bottom:14px">← Back to latest meets</a><div class="card panel"><div class="hero"><div><h1 id="eventTitle">Event</h1><div class="muted" id="eventMeta"></div></div><div class="kpiGrid"><div class="kpi"><div class="label">Swimmers</div><div class="value" id="kpiSwimmers">0</div></div><div class="kpi"><div class="label">Results</div><div class="value" id="kpiResults">0</div></div><div class="kpi"><div class="label">Clubs</div><div class="value" id="kpiClubs">0</div></div></div></div></div><div id="topThreeBlock" class="card panel" style="margin-top:14px;display:none"></div><div class="card panel" style="margin-top:14px"><h2>Event results</h2><div class="tableWrap"><table><thead><tr><th>Place</th><th>Swimmer</th><th>Club</th><th>Time</th></tr></thead><tbody id="results"></tbody></table></div></div></div></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Event Results</title>
+  <script src="data/app.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="nav">
+      <a href="index.html">Home</a>
+      <a href="search.html">Search</a>
+      <a href="clubs.html">Clubs</a>
+    </div>
+
+    <a id="backMeet" class="secondaryBtn" style="margin-bottom:14px" href="index.html">← Back</a>
+
+    <div class="card panel">
+      <div class="hero">
+        <div>
+          <h1 id="eventTitle">Event</h1>
+          <div id="eventMeta" class="muted"></div>
+        </div>
+        <div class="kpiGrid" style="max-width:640px;width:100%">
+          <div class="kpi">
+            <div class="label">Swimmers</div>
+            <div class="value" id="kpiSwimmers">0</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Results</div>
+            <div class="value" id="kpiResults">0</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Clubs</div>
+            <div class="value" id="kpiClubs">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="topThreeBlock" class="card panel" style="margin-top:14px;display:none"></div>
+
+    <div class="card panel" style="margin-top:14px">
+      <h2>Event results</h2>
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="medalCell">Place</th>
+              <th>Swimmer</th>
+              <th>Club</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody id="results"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    injectStyles();
+
+    const id = getParam("id");
+
+    loadRows().then(rows => {
+      const results = dedupeResultRows(
+        rows
+          .filter(r => eventId(r) === id)
+          .sort((a,b) => (a.rank || 9999) - (b.rank || 9999) || a.timeSeconds - b.timeSeconds)
+      );
+
+      const row = results[0];
+
+      if (!row) {
+        document.getElementById("eventTitle").textContent = "Event not found";
+        document.getElementById("eventMeta").textContent = "No event data found.";
+        document.getElementById("results").innerHTML = `<tr><td colspan="4" class="empty">No data found.</td></tr>`;
+        return;
+      }
+
+      document.getElementById("eventTitle").textContent = canonicalEventDisplay(row.event);
+      document.getElementById("eventMeta").textContent = [row.meet, row.venue, row.date].filter(Boolean).join(" · ");
+      document.getElementById("backMeet").href = "meet.html?id=" + encodeURIComponent(meetId(row));
+
+      document.getElementById("kpiSwimmers").textContent =
+        uniqueSorted(results.map(r => r.swimmer_key || swimmerKey(r.canonical_swimmer))).length;
+      document.getElementById("kpiResults").textContent = results.length;
+      document.getElementById("kpiClubs").textContent =
+        uniqueSorted(results.map(r => r.club)).length;
+
+      const topThree = topThreeForRows(results);
+      if (topThree.length) {
+        document.getElementById("topThreeBlock").style.display = "block";
+        document.getElementById("topThreeBlock").innerHTML = `
+          <h2 style="margin-bottom:12px">Top 3</h2>
+          <div class="topThreeGrid">
+            ${topThree.map(r => `
+              <div class="topThreeCard ${Number(r.rank) === 1 ? "gold" : Number(r.rank) === 2 ? "silver" : "bronze"}">
+                <div class="topThreePlace">${Number(r.rank) === 1 ? "1st place" : Number(r.rank) === 2 ? "2nd place" : "3rd place"}</div>
+                <div class="topThreeSwimmer">
+                  <a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">${escapeHtml(displaySwimmerName(r.canonical_swimmer))}</a>
+                </div>
+                <div class="topThreeClub">${escapeHtml(r.club)}</div>
+                <div class="topThreeTime">${escapeHtml(r.time)}</div>
+              </div>
+            `).join("")}
+          </div>
+        `;
+      }
+
+      document.getElementById("results").innerHTML = results.map(r => `
+        <tr>
+          <td data-label="Place" class="medalCell">
+            ${[1,2,3].includes(Number(r.rank))
+              ? `<span class="medalBadge ${medalClass(Number(r.rank))}">${medalLabel(Number(r.rank))}</span>`
+              : escapeHtml(String(r.rank || ""))}
+          </td>
+          <td data-label="Swimmer">
+            <a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">
+              ${escapeHtml(displaySwimmerName(r.canonical_swimmer))}
+            </a>
+          </td>
+          <td data-label="Club">${escapeHtml(r.club)}</td>
+          <td data-label="Time">${escapeHtml(r.time)}</td>
+        </tr>
+      `).join("");
+    }).catch(err => {
+      console.error(err);
+      document.getElementById("eventTitle").textContent = "Failed to load event";
+      document.getElementById("results").innerHTML = `<tr><td colspan="4" class="empty">Could not load the CSV file.</td></tr>`;
+    });
+  </script>
+</body>
+</html>

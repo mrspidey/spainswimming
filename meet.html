@@ -1,1 +1,178 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Meet Results</title><script src="data/app.js"></script></head><body><div class="wrap"><div class="nav"><a href="index.html">Home</a><a href="search.html">Search</a><a href="clubs.html">Clubs</a></div><a class="secondaryBtn" href="index.html" style="margin-bottom:14px">← Back to latest meets</a><div class="card panel"><div class="hero"><div><h1 id="meetTitle">Meet</h1><div class="muted" id="meetMeta"></div></div><div class="kpiGrid"><div class="kpi"><div class="label">Events</div><div class="value" id="kpiEvents">0</div></div><div class="kpi"><div class="label">Swimmers</div><div class="value" id="kpiSwimmers">0</div></div><div class="kpi"><div class="label">Results</div><div class="value" id="kpiResults">0</div></div></div></div></div><div id="eventBlocks" class="stack" style="margin-top:14px"></div></div></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meet Results</title>
+  <script src="data/app.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="nav">
+      <a href="index.html">Home</a>
+      <a href="search.html">Search</a>
+      <a href="clubs.html">Clubs</a>
+    </div>
+
+    <a class="secondaryBtn" style="margin-bottom:14px" href="index.html">← Back to latest meets</a>
+
+    <div class="card panel" style="margin-top:14px">
+      <div class="hero">
+        <div>
+          <h1 id="meetTitle">Meet</h1>
+          <div class="muted" id="meetMeta"></div>
+        </div>
+        <div class="kpiGrid" style="max-width:640px;width:100%">
+          <div class="kpi">
+            <div class="label">Events</div>
+            <div class="value" id="kpiEvents">0</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Swimmers</div>
+            <div class="value" id="kpiSwimmers">0</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Results</div>
+            <div class="value" id="kpiResults">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stack" id="eventBlocks" style="margin-top:14px"></div>
+  </div>
+
+  <script>
+    injectStyles();
+
+    const meetParamId = getParam("id");
+    const meetParamLegacy = getParam("meet");
+
+    function matchMeetRow(r){
+      if (meetParamId && meetId(r) === meetParamId) return true;
+      if (meetParamLegacy && normalize(r.meet) === normalize(meetParamLegacy)) return true;
+      return false;
+    }
+
+    loadRows().then(rows => {
+      const meetRowsRaw = rows.filter(matchMeetRow);
+      const meetRows = dedupeResultRows(meetRowsRaw);
+
+      if (!meetRows.length) {
+        document.getElementById("meetTitle").textContent = "Meet not found";
+        document.getElementById("meetMeta").textContent = "No results found for this meet.";
+        document.getElementById("eventBlocks").innerHTML = `<div class="card panel empty">No data found.</div>`;
+        return;
+      }
+
+      const meetTitle = [...new Set(meetRows.map(r => r.meet).filter(Boolean))].sort((a,b)=>b.length-a.length)[0];
+      const venue = [...new Set(meetRows.map(r => r.venue).filter(Boolean))][0] || "";
+      const date = [...new Set(meetRows.map(r => r.date).filter(Boolean))][0] || "";
+      const province = [...new Set(meetRows.map(r => r.province).filter(Boolean))][0] || "";
+
+      document.getElementById("meetTitle").textContent = meetTitle;
+      document.getElementById("meetMeta").textContent = [venue, date, province].filter(Boolean).join(" · ");
+
+      document.getElementById("kpiEvents").textContent =
+        uniqueSorted(meetRows.map(r => canonicalEventKey(r.event))).length;
+      document.getElementById("kpiSwimmers").textContent =
+        uniqueSorted(meetRows.map(r => r.swimmer_key || swimmerKey(r.canonical_swimmer))).length;
+      document.getElementById("kpiResults").textContent = meetRows.length;
+
+      const groupedByEvent = new Map();
+      meetRows.forEach(r => {
+        const key = canonicalEventKey(r.event);
+        if (!key) return;
+        if (!groupedByEvent.has(key)) groupedByEvent.set(key, []);
+        groupedByEvent.get(key).push(r);
+      });
+
+      const eventKeys = [...groupedByEvent.keys()].sort((a,b) => {
+        const da = Number((a.match(/\d+/)||["0"])[0]);
+        const db = Number((b.match(/\d+/)||["0"])[0]);
+        return da - db || a.localeCompare(b, "es");
+      });
+
+      document.getElementById("eventBlocks").innerHTML = eventKeys.map(key => {
+        const eventRows = dedupeResultRows(
+          [...groupedByEvent.get(key)].sort((a,b) =>
+            (a.rank || 9999) - (b.rank || 9999) || a.timeSeconds - b.timeSeconds
+          )
+        );
+
+        const topThree = topThreeForRows(eventRows);
+        const representative = eventRows[0];
+        const eId = eventId(representative);
+
+        return `
+          <div class="eventCard">
+            <div class="eventCardHead">
+              <div>
+                <div class="eventCardTitle">${escapeHtml(canonicalEventDisplay(representative.event))}</div>
+                <div class="eventCardMeta">${eventRows.length} results</div>
+              </div>
+              <div>
+                <a class="primaryBtn" href="event.html?id=${encodeURIComponent(eId)}">Open event</a>
+              </div>
+            </div>
+
+            ${topThree.length ? `
+              <div class="panel" style="padding-top:14px;padding-bottom:0">
+                <div class="topThreeGrid">
+                  ${topThree.map(r => `
+                    <div class="topThreeCard ${Number(r.rank) === 1 ? "gold" : Number(r.rank) === 2 ? "silver" : "bronze"}">
+                      <div class="topThreePlace">${Number(r.rank) === 1 ? "1st place" : Number(r.rank) === 2 ? "2nd place" : "3rd place"}</div>
+                      <div class="topThreeSwimmer">
+                        <a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">${escapeHtml(displaySwimmerName(r.canonical_swimmer))}</a>
+                      </div>
+                      <div class="topThreeClub">${escapeHtml(r.club)}</div>
+                      <div class="topThreeTime">${escapeHtml(r.time)}</div>
+                    </div>
+                  `).join("")}
+                </div>
+              </div>
+            ` : ""}
+
+            <div class="panel">
+              <div class="tableWrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th class="medalCell">Place</th>
+                      <th>Swimmer</th>
+                      <th>Club</th>
+                      <th>Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${eventRows.map(r => `
+                      <tr>
+                        <td data-label="Place" class="medalCell">
+                          ${[1,2,3].includes(Number(r.rank))
+                            ? `<span class="medalBadge ${medalClass(Number(r.rank))}">${medalLabel(Number(r.rank))}</span>`
+                            : escapeHtml(String(r.rank || ""))}
+                        </td>
+                        <td data-label="Swimmer">
+                          <a href="swimmer.html?name=${encodeURIComponent(r.canonical_swimmer)}">
+                            ${escapeHtml(displaySwimmerName(r.canonical_swimmer))}
+                          </a>
+                        </td>
+                        <td data-label="Club">${escapeHtml(r.club)}</td>
+                        <td data-label="Time">${escapeHtml(r.time)}</td>
+                      </tr>
+                    `).join("")}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }).catch(err => {
+      console.error(err);
+      document.getElementById("meetTitle").textContent = "Failed to load meet";
+      document.getElementById("eventBlocks").innerHTML = `<div class="card panel empty">Could not load the CSV file.</div>`;
+    });
+  </script>
+</body>
+</html>

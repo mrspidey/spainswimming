@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import re
 from pathlib import Path
-
+import re
 import pandas as pd
 
 
-INPUT = Path.home() / "spain-swimming-pipeline/rebuilt_merge_output/spain_boys_2014_results_master_REBUILT_FROM_PDFS.csv"
-OUTPUT = Path.home() / "spainswimming/data/spain_boys_2014_results_master_merged_clean.csv"
-
+INPUT = Path("/Users/hristosimeonov/spain-swimming-pipeline/rebuilt_merge_output/spain_boys_2014_results_master_REBUILT_FROM_PDFS.csv")
+OUTPUT = Path("/Users/hristosimeonov/spainswimming/data/spain_boys_2014_results_master_merged_clean.csv")
 
 OUT_COLS = [
     "Swimmer",
@@ -26,259 +24,320 @@ OUT_COLS = [
     "Distance",
     "Gender",
     "Competition_Type",
+    "BirthYear",
     "Provincial_Rank",
     "National_Rank",
     "Dedupe_Key",
 ]
 
+BAD_VENUE_RE = re.compile(r"clasificaci[oó]n|tiempo|pts|ninguna|resultados", re.I)
 
-def clean_text(x):
+VENUE_HINTS = [
+    ("vinaros", "Vinaros"),
+    ("vinaroz", "Vinaros"),
+    ("castellon", "Castellón"),
+    ("castellón", "Castellón"),
+    ("petrer", "Petrer"),
+    ("san_vicente", "San Vicente"),
+    ("san-vicente", "San Vicente"),
+    ("sanvicente", "San Vicente"),
+    ("ondara", "Ondara"),
+    ("villena", "Villena"),
+    ("torrevieja", "Torrevieja"),
+    ("elda", "Elda"),
+    ("pilar", "Pilar de la Horadada"),
+    ("horadada", "Pilar de la Horadada"),
+    ("gandia", "Gandía"),
+    ("xativa", "Xativa"),
+    ("xàtiva", "Xativa"),
+    ("benimamet", "Benimamet"),
+    ("benim", "Benimamet"),
+    ("xirivella", "Xirivella"),
+    ("nazaret", "Nazaret"),
+    ("oliva", "Oliva"),
+    ("alzira", "Alzira"),
+    ("sagunto", "Sagunto"),
+    ("carpesa", "Carpesa"),
+    ("alcudia", "Alcudia"),
+    ("betera", "Bétera"),
+    ("bétera", "Bétera"),
+]
+
+
+def clean_text(x) -> str:
     if pd.isna(x):
         return ""
-    return re.sub(r"\s+", " ", str(x)).strip()
+    return re.sub(r"\s+", " ", str(x).strip())
 
 
-def clean_name(name):
-    name = clean_text(name)
-    name = re.sub(r"\s+", " ", name)
-    name = re.sub(r"\s+,\s+", ", ", name)
-    return name.strip()
+def norm(x) -> str:
+    s = clean_text(x).lower()
+    return (
+        s.replace("á", "a")
+        .replace("à", "a")
+        .replace("é", "e")
+        .replace("è", "e")
+        .replace("í", "i")
+        .replace("ï", "i")
+        .replace("ó", "o")
+        .replace("ò", "o")
+        .replace("ú", "u")
+        .replace("ü", "u")
+        .replace("ñ", "n")
+        .replace("ç", "c")
+    )
 
 
-def normalise_event(event):
-    event = clean_text(event)
-    event = re.sub(r"\s+", " ", event)
-
-    event = event.replace("Libre", "Freestyle")
-    event = event.replace("Espalda", "Backstroke")
-    event = event.replace("Braza", "Breaststroke")
-    event = event.replace("Mariposa", "Butterfly")
-    event = event.replace("Estilos", "Medley")
-
-    event = re.sub(r"\bAlevin Masculino\b", "", event, flags=re.I)
-    event = re.sub(r"\bAlevin Femenino\b", "", event, flags=re.I)
-    event = re.sub(r"\bBenjamin Masculino\b", "", event, flags=re.I)
-    event = re.sub(r"\bBenjamin Femenino\b", "", event, flags=re.I)
-    event = re.sub(r"\bMasc\.\b", "", event, flags=re.I)
-    event = re.sub(r"\bFem\.\b", "", event, flags=re.I)
-
-    event = re.sub(r"\s+", " ", event).strip()
-
-    m = re.search(r"(\d{2,4})\s*m?\s*(Freestyle|Backstroke|Breaststroke|Butterfly|Medley)", event, re.I)
-    if m:
-        return f"{int(m.group(1))}m {m.group(2).title()}"
-
-    return event
+def fix_date(x) -> str:
+    s = clean_text(x)
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", s)
+    if not m:
+        return s
+    return f"{int(m.group(1)):02d}/{int(m.group(2)):02d}/{m.group(3)}"
 
 
-def infer_distance(event):
-    event = clean_text(event)
-    m = re.search(r"(\d{2,4})\s*m", event, re.I)
-    if m:
-        return int(m.group(1))
-    return pd.NA
+def fix_meet(x) -> str:
+    s = clean_text(x)
+    s = re.sub(r"FICHA TÉCNICA DE LA COMPETICIÓN", "", s, flags=re.I).strip()
+    s = re.sub(r"\bClasificaci[oó]n\s+AN\s+Tiempo\s+Pts\b", "", s, flags=re.I).strip()
+    s = re.sub(r"\s+", " ", s).strip()
+    return s or "FNCV Meet"
 
 
-def seconds_from_time(t):
-    t = clean_text(t)
-    if not t:
-        return pd.NA
+def clean_club(x) -> str:
+    s = clean_text(x)
 
-    if ":" in t:
-        mins, sec = t.split(":", 1)
-        try:
-            return round(int(mins) * 60 + float(sec), 2)
-        except Exception:
-            return pd.NA
+    # Remove accidental split/time/points swallowed into club, e.g.
+    # "C.N. Vila-Real 1:16.16 356 37.38"
+    s = re.sub(
+        r"\s+\d+:\d{2}\.\d{2}\s+\d+\s+(?:\d+:\d{2}\.\d{2}|\d{1,2}\.\d{2})\s*$",
+        "",
+        s,
+    )
 
-    try:
-        return round(float(t), 2)
-    except Exception:
-        return pd.NA
+    # Also remove patterns like "C.N. Benicarlo 2:08.08 53 1:00.45"
+    s = re.sub(
+        r"\s+\d{1,2}:\d{2}\.\d{2}\s+\d{1,4}\s+\d{1,2}:\d{2}\.\d{2}\s*$",
+        "",
+        s,
+    )
 
-
-def infer_gender(row):
-    g = clean_text(row.get("gender", ""))
-    if g.upper() in {"M", "F"}:
-        return g.upper()
-
-    event = clean_text(row.get("event_name", row.get("Event", ""))).lower()
-    if "fem" in event or "femenino" in event:
-        return "F"
-    if "masc" in event or "masculino" in event:
-        return "M"
-
-    return "M"
+    return clean_text(s)
 
 
-def competition_type(meet):
-    m = clean_text(meet).lower()
-    if "jornada" in m or "liga" in m:
+def infer_venue(row) -> str:
+    current = clean_text(row.get("city", row.get("Venue", "")))
+    if current and not BAD_VENUE_RE.search(current):
+        return current
+
+    blob = " ".join(
+        [
+            clean_text(row.get("source_pdf", row.get("Source", ""))),
+            clean_text(row.get("source_url", "")),
+            clean_text(row.get("meet_name", row.get("Meet", ""))),
+        ]
+    )
+    n = norm(blob).replace(" ", "_")
+
+    for key, venue in VENUE_HINTS:
+        if key in n:
+            return venue
+
+    fallback = clean_text(row.get("region", row.get("Province", ""))).title()
+    return fallback or "Unknown"
+
+
+def comp_type(meet) -> str:
+    s = norm(meet)
+    if "liga" in s or "jornada" in s:
         return "Liga"
-    if "control" in m:
+    if "control" in s:
         return "Control"
-    if "trofeo" in m:
-        return "Trofeo"
-    if "campeonato" in m or "auton" in m:
-        return "Campeonato"
-    if "fase" in m:
-        return "Fase"
-    return "Otro"
+    if "trofeo" in s or "campeonato" in s or "fase" in s:
+        return "Championship/Trophy"
+    return "Other"
 
 
-def sort_date_value(d):
-    d = clean_text(d)
-    try:
-        return pd.to_datetime(d, dayfirst=True, errors="coerce")
-    except Exception:
-        return pd.NaT
+def swimmer_key(x) -> str:
+    return re.sub(r"[^A-Z0-9]+", " ", clean_text(x).upper()).strip()
 
 
 def main():
-    print(f"INPUT: {INPUT}")
-    print(f"OUTPUT: {OUTPUT}")
+    print("INPUT:", INPUT)
+    print("OUTPUT:", OUTPUT)
 
     if not INPUT.exists():
-        raise FileNotFoundError(f"Input file not found: {INPUT}")
+        raise FileNotFoundError(f"Missing input CSV: {INPUT}")
 
-    raw = pd.read_csv(INPUT, dtype="string")
-    print(f"RAW ROWS: {len(raw)}")
+    df = pd.read_csv(INPUT)
+    print("RAW ROWS:", len(df))
 
-    colmap = {
-        "Swimmer": "swimmer",
-        "Event": "event_name",
-        "Date": "meet_date",
-        "Time": "time",
-        "Club": "club",
-        "Rank": "rank",
-        "Meet": "meet_name",
-        "Venue": "city",
-        "Province": "region",
-        "Source": "source_pdf",
-        "Seconds": "time_seconds",
-        "Distance": "event_distance",
-        "Gender": "gender",
-        "Competition_Type": "competition_type",
-        "Dedupe_Key": "key",
-    }
+    out = pd.DataFrame()
+    out["Swimmer"] = df.get("swimmer", "")
+    out["Event"] = df.get("event_name", "")
+    out["Date"] = df.get("meet_date", "")
+    out["Time"] = df.get("time", "")
+    out["Club"] = df.get("club", "")
+    out["Rank"] = pd.to_numeric(df.get("rank", ""), errors="coerce")
+    out["Meet"] = df.get("meet_name", "")
+    out["Venue"] = df.apply(infer_venue, axis=1)
+    out["Province"] = df.get("region", "")
+    out["Source"] = df.get("source_pdf", "")
+    out["Seconds"] = pd.to_numeric(df.get("time_seconds", ""), errors="coerce")
+    out["Distance"] = pd.to_numeric(df.get("event_distance", ""), errors="coerce")
+    out["Gender"] = df.get("gender", "")
+    out["BirthYear"] = pd.to_numeric(df.get("birthyear", ""), errors="coerce").astype("Int64")
+    out["Competition_Type"] = df.get("competition_type", "")
 
-    df = pd.DataFrame()
+    out["Swimmer"] = out["Swimmer"].map(clean_text)
+    out["Event"] = out["Event"].map(clean_text)
+    out["Date"] = out["Date"].map(fix_date)
+    out["Time"] = out["Time"].map(clean_text)
+    out["Club"] = out["Club"].map(clean_club)
+    out["Meet"] = out["Meet"].map(fix_meet)
+    out["Venue"] = out["Venue"].map(clean_text)
+    out["Province"] = out["Province"].map(lambda x: clean_text(x).lower())
+    out["Source"] = out["Source"].map(clean_text)
+    out["Gender"] = out["Gender"].map(lambda x: clean_text(x).upper())
+    out["Competition_Type"] = out["Competition_Type"].map(clean_text)
+    out.loc[out["Competition_Type"].eq(""), "Competition_Type"] = out.loc[
+        out["Competition_Type"].eq(""), "Meet"
+    ].map(comp_type)
 
-    for out_col, in_col in colmap.items():
-        if in_col in raw.columns:
-            df[out_col] = raw[in_col]
-        else:
-            df[out_col] = ""
-
-    df["Swimmer"] = df["Swimmer"].map(clean_name)
-    df["Event"] = df["Event"].map(normalise_event)
-    df["Date"] = df["Date"].map(clean_text)
-    df["Time"] = df["Time"].map(clean_text)
-    df["Club"] = df["Club"].map(clean_text)
-    df["Meet"] = df["Meet"].map(clean_text)
-    df["Venue"] = df["Venue"].map(clean_text)
-    df["Province"] = df["Province"].map(lambda x: clean_text(x).lower())
-    df["Source"] = df["Source"].map(clean_text)
-
-    df["Seconds"] = pd.to_numeric(df["Seconds"], errors="coerce")
-    missing_seconds = df["Seconds"].isna()
-    df.loc[missing_seconds, "Seconds"] = df.loc[missing_seconds, "Time"].map(seconds_from_time)
-
-    df["Distance"] = pd.to_numeric(df["Distance"], errors="coerce")
-    missing_distance = df["Distance"].isna()
-    df.loc[missing_distance, "Distance"] = df.loc[missing_distance, "Event"].map(infer_distance)
-
-    df["Rank"] = pd.to_numeric(df["Rank"], errors="coerce")
-
-    df["Gender"] = raw.apply(infer_gender, axis=1)
-
-    if "competition_type" in raw.columns:
-        df["Competition_Type"] = raw["competition_type"].fillna("").map(clean_text)
-        df.loc[df["Competition_Type"].eq(""), "Competition_Type"] = df.loc[
-            df["Competition_Type"].eq(""), "Meet"
-        ].map(competition_type)
-    else:
-        df["Competition_Type"] = df["Meet"].map(competition_type)
-
-    # Remove unusable rows only.
-    df = df[
-        df["Swimmer"].ne("")
-        & df["Event"].ne("")
-        & df["Time"].ne("")
-        & df["Seconds"].notna()
-        & df["Distance"].notna()
+    out = out[
+        out["Swimmer"].ne("")
+        & out["Event"].ne("")
+        & out["Time"].ne("")
+        & out["Club"].ne("")
+        & out["Gender"].isin(["M", "F"])
+        & out["Seconds"].notna()
+        & out["BirthYear"].eq(2014)
     ].copy()
 
-    # Guard against event/distance leakage, e.g. 100m result being labelled as 200m.
-    # 200m under 2:20 for this age group is suspicious in this dataset.
-    bad_200 = (df["Distance"].astype(float) == 200) & (df["Seconds"].astype(float) < 140)
-    if bad_200.any():
-        print(f"Dropping suspicious 200m rows under 2:20: {int(bad_200.sum())}")
-        df = df[~bad_200].copy()
+    bad_200 = (out["Distance"].eq(200)) & (out["Seconds"].lt(140))
+    print("Dropping suspicious 200m rows under 2:20:", int(bad_200.sum()))
+    out = out[~bad_200].copy()
 
-    # Guard against obviously broken long-distance values.
-    bad_400 = (df["Distance"].astype(float) == 400) & (df["Seconds"].astype(float) < 240)
-    if bad_400.any():
-        print(f"Dropping suspicious 400m rows under 4:00: {int(bad_400.sum())}")
-        df = df[~bad_400].copy()
+    bad_400 = (out["Distance"].eq(400)) & (out["Seconds"].lt(240))
+    print("Dropping suspicious 400m rows under 4:00:", int(bad_400.sum()))
+    out = out[~bad_400].copy()
 
-    # Dedupe.
-    df["Dedupe_Key"] = (
-        df["Swimmer"].str.upper()
+    out["SwimmerKey"] = out["Swimmer"].map(swimmer_key)
+
+    out["Dedupe_Key"] = (
+        out["SwimmerKey"]
         + "|"
-        + df["Event"].str.upper()
+        + out["Event"].str.upper()
         + "|"
-        + df["Date"].astype(str)
+        + out["Date"].astype(str)
         + "|"
-        + df["Seconds"].round(2).astype(str)
+        + out["Seconds"].round(2).astype(str)
         + "|"
-        + df["Gender"].astype(str)
+        + out["Gender"]
+        + "|"
+        + out["BirthYear"].astype(str)
     )
 
-    df = df.drop_duplicates(subset=["Dedupe_Key"]).copy()
+    before = len(out)
+    out = out.drop_duplicates(subset=["Dedupe_Key"]).copy()
+    print("Dropped duplicate rows:", before - len(out))
 
-    # Ranks by gender + event.
-    df["Provincial_Rank"] = pd.NA
-    df["National_Rank"] = pd.NA
+    out["Provincial_Rank"] = pd.Series([pd.NA] * len(out), index=out.index, dtype="Int64")
+    out["National_Rank"] = pd.Series([pd.NA] * len(out), index=out.index, dtype="Int64")
 
-    for (_, event, gender), group in df.groupby(["Province", "Event", "Gender"], dropna=False):
-        order = group.sort_values(["Seconds", "Date"], ascending=[True, True])
-        df.loc[order.index, "Provincial_Rank"] = list(range(1, len(order) + 1))
+    for (gender, birthyear, event), group in out.groupby(["Gender", "BirthYear", "Event"], dropna=False):
+        best_idx = (
+            group.sort_values(["Seconds", "Date", "Swimmer"])
+            .groupby("SwimmerKey", as_index=False)
+            .head(1)
+            .index
+        )
+        best = out.loc[best_idx].sort_values(["Seconds", "Swimmer"])
+        swimmer_to_rank = {
+            out.loc[idx, "SwimmerKey"]: rank
+            for rank, idx in enumerate(best.index, start=1)
+        }
 
-    for (event, gender), group in df.groupby(["Event", "Gender"], dropna=False):
-        order = group.sort_values(["Seconds", "Date"], ascending=[True, True])
-        df.loc[order.index, "National_Rank"] = list(range(1, len(order) + 1))
+        mask = (
+            out["Gender"].eq(gender)
+            & out["BirthYear"].eq(birthyear)
+            & out["Event"].eq(event)
+        )
+        out.loc[mask, "National_Rank"] = out.loc[mask, "SwimmerKey"].map(swimmer_to_rank)
 
-    # Sort homepage/front-end stable: newest first, then meet, event, gender, time.
-    df["_date_sort"] = df["Date"].map(sort_date_value)
-    df = df.sort_values(
-        ["_date_sort", "Meet", "Event", "Gender", "Seconds"],
-        ascending=[False, True, True, True, True],
-        na_position="last",
-    ).drop(columns=["_date_sort"])
+    for (gender, birthyear, event, province), group in out.groupby(
+        ["Gender", "BirthYear", "Event", "Province"], dropna=False
+    ):
+        best_idx = (
+            group.sort_values(["Seconds", "Date", "Swimmer"])
+            .groupby("SwimmerKey", as_index=False)
+            .head(1)
+            .index
+        )
+        best = out.loc[best_idx].sort_values(["Seconds", "Swimmer"])
+        swimmer_to_rank = {
+            out.loc[idx, "SwimmerKey"]: rank
+            for rank, idx in enumerate(best.index, start=1)
+        }
 
-    # Format numeric columns safely.
-    df["Seconds"] = pd.to_numeric(df["Seconds"], errors="coerce").round(2)
-    df["Distance"] = pd.to_numeric(df["Distance"], errors="coerce").astype("Int64")
-    df["Rank"] = pd.to_numeric(df["Rank"], errors="coerce").astype("Int64")
-    df["Provincial_Rank"] = pd.to_numeric(df["Provincial_Rank"], errors="coerce").astype("Int64")
-    df["National_Rank"] = pd.to_numeric(df["National_Rank"], errors="coerce").astype("Int64")
+        mask = (
+            out["Gender"].eq(gender)
+            & out["BirthYear"].eq(birthyear)
+            & out["Event"].eq(event)
+            & out["Province"].eq(province)
+        )
+        out.loc[mask, "Provincial_Rank"] = out.loc[mask, "SwimmerKey"].map(swimmer_to_rank)
 
-    for col in OUT_COLS:
-        if col not in df.columns:
-            df[col] = ""
+    bad_venues = out["Venue"].astype(str).str.contains(
+        r"Clasificación|Tiempo|Pts|Ninguna", case=False, na=False
+    ).sum()
 
-    df = df[OUT_COLS]
+    bad_clubs = out["Club"].astype(str).str.contains(
+        r"\d+:\d+|\d+\.\d{2}\s+\d+", regex=True, na=False
+    ).sum()
+
+    print("Bad venues remaining:", int(bad_venues))
+    print("Bad club rows remaining:", int(bad_clubs))
+
+    print("\nBirthYear values:")
+    print(out["BirthYear"].value_counts(dropna=False).head(10))
+
+    print("\nGender values:")
+    print(out["Gender"].value_counts(dropna=False))
+
+    print("\nCompetition types:")
+    print(out["Competition_Type"].value_counts(dropna=False))
+
+    print("\nJack check:")
+    jack = out[out["Swimmer"].str.contains("SIMEONOV, Jack Hristov|Jack Hristov", case=False, na=False)]
+    if len(jack):
+        print(
+            jack[
+                [
+                    "Swimmer",
+                    "Event",
+                    "Time",
+                    "Gender",
+                    "BirthYear",
+                    "Rank",
+                    "Meet",
+                    "Venue",
+                    "Province",
+                    "Provincial_Rank",
+                    "National_Rank",
+                ]
+            ].to_string(index=False)
+        )
+    else:
+        print("No Jack rows found")
+
+    out = out[OUT_COLS].copy()
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(OUTPUT, index=False)
+    out.to_csv(OUTPUT, index=False)
 
-    print(f"FINAL ROWS: {len(df)}")
-    print("\nGender values:")
-    print(df["Gender"].value_counts(dropna=False))
-    print("\nCompetition types:")
-    print(df["Competition_Type"].value_counts(dropna=False))
-    print(f"\nWROTE: {OUTPUT}")
+    print("\nFINAL ROWS:", len(out))
+    print("WROTE:", OUTPUT)
 
 
 if __name__ == "__main__":
